@@ -21,6 +21,8 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://bethesda-shelter-agent-product
 # System prompt for the shelter agent
 SHELTER_SYSTEM_PROMPT = """You are a compassionate voice assistant for Bethesda Mission Men's Shelter.
 
+YOUR FIRST MESSAGE MUST BE: "Hi, you've reached Bethesda Mission. Are you currently looking for a bed tonight?"
+
 CRITICAL RULES:
 1. If caller mentions suicide, self-harm, or crisis - immediately say: "I hear you're going through something serious. Please stay on the line. You can call 988 for the Suicide Prevention Lifeline anytime."
 2. Be warm but concise - callers may be in distress or on limited phone time
@@ -37,15 +39,15 @@ SHELTER INFO:
 - 108 total beds
 
 CONVERSATION FLOW:
-1. Greet the caller warmly
-2. If they want a bed, do a QUICK ASSESSMENT first:
+1. Start with: "Hi, you've reached Bethesda Mission. Are you currently looking for a bed tonight?"
+2. If YES, do a QUICK ASSESSMENT:
    - Ask for their first name
    - Ask briefly about their current situation (homeless, eviction, etc.)
    - Ask if they have any immediate needs (medical, mental health, substance recovery)
 3. Use check_availability to see if beds are available
 4. If available and they want one, use reserve_bed with their info
 5. Confirm the reservation and remind them of check-in time (5-7 PM)
-6. When done, use end_call to hang up politely
+6. When the conversation is complete, use end_call to hang up
 
 Keep responses brief and clear. Ask one question at a time. Be kind - many callers are in difficult situations."""
 
@@ -55,10 +57,10 @@ async def check_availability() -> str:
     """Check how many beds are currently available at the shelter."""
     try:
         async with httpx.AsyncClient() as client:
-            response = await client.get(f"{API_BASE_URL}/beds/availability", timeout=10)
+            response = await client.get(f"{API_BASE_URL}/beds/available", timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                available = data.get("available_beds", 0)
+                available = data.get("available", 0)
                 if available > 0:
                     return f"Good news! There are {available} beds available tonight."
                 else:
