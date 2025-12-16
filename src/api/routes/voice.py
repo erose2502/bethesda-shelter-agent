@@ -28,37 +28,27 @@ async def handle_incoming_call(
 ) -> Response:
     """
     Handle incoming Twilio call - the entry point.
-    
-    Flow:
-    1. Greet caller with calm, trustworthy voice
-    2. Ask how we can help
-    3. Gather speech input
     """
-    settings = get_settings()
-    caller_hash = hash_phone(From)
-    
     response = VoiceResponse()
     
-    # Warm, calm greeting - NOT corporate
-    response.say(
-        "Hello, you've reached Bethesda Mission Men's Shelter. "
-        "I'm here to help you. How can I assist you today?",
-        voice="alice",
-        language="en-US",
-    )
-    
-    # Gather speech input
+    # Single greeting with gather - no duplicate speech
     gather = Gather(
         input="speech",
         action="/api/voice/process",
         method="POST",
-        speech_timeout="auto",
+        speech_timeout="3",
+        timeout=5,
         language="en-US",
     )
-    gather.say("You can ask about bed availability, make a reservation, or ask about our shelter rules.")
+    gather.say(
+        "Hello, you've reached Bethesda Mission Men's Shelter. "
+        "How can I help you today?",
+        voice="alice",
+        language="en-US",
+    )
     response.append(gather)
     
-    # If no input, redirect
+    # If no input, try again once
     response.redirect("/api/voice/no-input")
     
     return Response(content=str(response), media_type="application/xml")
@@ -72,47 +62,64 @@ async def process_speech(
     From: Annotated[str, Form()] = "",
     CallSid: Annotated[str, Form()] = "",
 ) -> Response:
-    """
-    Process speech input from caller.
-    
-    Flow:
-    1. Classify intent (GPT-4)
-    2. Query RAG for shelter-specific info
-    3. Check bed availability if needed
-    4. Create reservation if requested
-    5. Respond with appropriate action
-    """
+    """Process speech input from caller."""
     caller_hash = hash_phone(From)
-    
     response = VoiceResponse()
     
     if not SpeechResult:
-        response.say("I didn't catch that. Let me transfer you to someone who can help.")
-        response.redirect("/api/voice/transfer")
-        return Response(content=str(response), media_type="application/xml")
-    
-    # Process through voice agent with database session
-    voice_agent = VoiceAgentService(db_session=db)
-    result = await voice_agent.process_request(
-        transcript=SpeechResult,
-        caller_hash=caller_hash,
-        call_sid=CallSid,
-    )
-    
-    # Respond based on intent
-    response.say(result.response_text, voice="alice", language="en-US")
-    
-    if result.needs_followup:
+        response.say("I didn't catch that. Could you please repeat?", voice="alice")
         gather = Gather(
             input="speech",
             action="/api/voice/process",
             method="POST",
-            speech_timeout="auto",
+            speech_timeout="3",
+            timeout=5,
         )
-        gather.say(result.followup_prompt or "Is there anything else I can help you with?")
         response.append(gather)
-    else:
-        response.say("Thank you for calling. Take care and stay safe.")
+        response.redirect("/api/voice/no-input")
+        return Response(content=str(response), media_type="application/xml")
+    
+    try:
+        # Process through voice agent
+        voice_agent = VoiceAgentService(db_session=db)
+        result = await voice_agent.process_request(
+            transcript=SpeechResult,
+            caller_hash=caller_hash,
+            call_sid=CallSid,
+        )
+        
+        if result.needs_followup:
+            # Combine response and followup into single gather
+            gather = Gather(
+                input="speech",
+                action="/api/voice/process",
+                method="POST",
+                speech_timeout="3",
+                timeout=8,
+            )
+            # Say the response text, then wait for input
+            full_response = result.response_text
+            if result.followup_prompt:
+                full_response += " " + result.followup_prompt
+            gather.say(full_response, voice="alice", language="en-US")
+            response.append(gather)
+            # If no response, end politely
+            response.say("No problem. Thank you for calling Bethesda Mission. Take care.", voice="alice")
+            response.hangup()
+        else:
+            response.say(result.response_text, voice="alice", language="en-US")
+            response.say("Thank you for calling. Take care and stay safe.", voice="alice")
+            response.hangup()
+            
+    except Exception as e:
+        # Don't drop the call on error
+        print(f"Error processing speech: {e}")
+        response.say(
+            "I'm sorry, I'm having trouble right now. "
+            "Please try calling back in a few minutes, or visit us directly. "
+            "We're located at Bethesda Mission. Take care.",
+            voice="alice"
+        )
         response.hangup()
     
     return Response(content=str(response), media_type="application/xml")
