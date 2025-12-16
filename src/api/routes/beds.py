@@ -86,3 +86,20 @@ async def checkout_bed(bed_id: int, db: AsyncSession = Depends(get_db)) -> dict:
         return {"status": "available", "bed_id": bed_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/simulate")
+async def simulate_occupancy(
+    available: int = 3,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Simulate bed occupancy for testing.
+    Sets the specified number of beds as available, rest as occupied.
+    """
+    if available < 0 or available > 108:
+        raise HTTPException(status_code=400, detail="Available must be 0-108")
+    
+    bed_service = BedService(db)
+    await bed_service.simulate_occupancy(available)
+    return {"message": f"Simulated: {available} beds available, {108 - available} occupied"}

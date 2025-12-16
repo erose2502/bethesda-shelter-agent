@@ -155,3 +155,25 @@ class BedService:
         
         bed.status = BedStatus.AVAILABLE
         await self.db.flush()
+
+    async def simulate_occupancy(self, available: int = 3) -> None:
+        """
+        Simulate bed occupancy for testing.
+        Sets specified number as available, rest as occupied.
+        """
+        from sqlalchemy import update
+        
+        # First, set all beds to occupied
+        await self.db.execute(
+            update(Bed).values(status=BedStatus.OCCUPIED)
+        )
+        
+        # Then set first N beds to available
+        if available > 0:
+            await self.db.execute(
+                update(Bed)
+                .where(Bed.bed_id <= available)
+                .values(status=BedStatus.AVAILABLE)
+            )
+        
+        await self.db.commit()
