@@ -16,17 +16,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
     # Startup
     settings = get_settings()
-    if settings.debug:
-        print("🚀 Starting Bethesda Shelter Agent...")
-        print(f"   Total beds configured: {settings.total_beds}")
+    print("🚀 Starting Bethesda Shelter Agent...")
+    print(f"   Total beds configured: {settings.total_beds}")
     
-    await init_db()
+    # Try to init database, but don't crash if it fails
+    try:
+        await init_db()
+        print("✅ Database connected")
+    except Exception as e:
+        print(f"⚠️ Database init failed (will retry on first request): {e}")
     
     yield
     
     # Shutdown
-    if settings.debug:
-        print("👋 Shutting down Bethesda Shelter Agent...")
+    print("👋 Shutting down Bethesda Shelter Agent...")
 
 
 def create_app() -> FastAPI:
