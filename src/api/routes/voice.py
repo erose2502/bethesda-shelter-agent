@@ -3,12 +3,14 @@
 import hashlib
 from typing import Annotated
 
-from fastapi import APIRouter, Form, Request, Response
+from fastapi import APIRouter, Form, Request, Response, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 from twilio.twiml.voice_response import VoiceResponse, Gather
 
 from src.config import get_settings
 from src.services.voice_agent import VoiceAgentService
 from src.services.intent_classifier import IntentClassifier
+from src.db.database import get_db
 
 router = APIRouter()
 
@@ -65,6 +67,7 @@ async def handle_incoming_call(
 @router.post("/process")
 async def process_speech(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     SpeechResult: Annotated[str, Form()] = "",
     From: Annotated[str, Form()] = "",
     CallSid: Annotated[str, Form()] = "",
@@ -88,8 +91,8 @@ async def process_speech(
         response.redirect("/api/voice/transfer")
         return Response(content=str(response), media_type="application/xml")
     
-    # Process through voice agent
-    voice_agent = VoiceAgentService()
+    # Process through voice agent with database session
+    voice_agent = VoiceAgentService(db_session=db)
     result = await voice_agent.process_request(
         transcript=SpeechResult,
         caller_hash=caller_hash,
