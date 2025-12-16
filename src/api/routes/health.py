@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from src.config import get_settings
+from src.db.database import init_db
 
 router = APIRouter()
 
@@ -16,6 +17,16 @@ async def health_check() -> dict:
         "service": "bethesda-shelter-agent",
         "total_beds": settings.total_beds,
     }
+
+
+@router.get("/init-db")
+async def initialize_database() -> dict:
+    """Initialize database tables and seed 108 beds."""
+    try:
+        await init_db()
+        return {"status": "success", "message": "Database initialized with 108 beds"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 @router.get("/ready")
