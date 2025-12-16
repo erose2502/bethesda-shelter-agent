@@ -1,0 +1,83 @@
+# Sample shelter policies for initial RAG setup
+# Load these into Pinecone using the RAG service
+
+policies:
+  - id: "intake-001"
+    category: "intake"
+    title: "Check-in Hours"
+    content: |
+      Check-in for the men's shelter is between 5 PM and 7 PM daily. 
+      You must arrive during this window to secure a bed for the night.
+      If you call ahead and make a reservation, your bed will be held for up to 3 hours.
+
+  - id: "intake-002"
+    category: "intake"
+    title: "First-Time Guests"
+    content: |
+      If this is your first time staying with us, please arrive a few minutes early.
+      We'll need to do a brief intake process which takes about 10 to 15 minutes.
+      Bring an ID if you have one, but it's not required.
+
+  - id: "rules-001"
+    category: "rules"
+    title: "Sobriety Requirement"
+    content: |
+      We require sobriety at our shelter. No alcohol or drugs are allowed on the premises.
+      If you arrive under the influence, we cannot admit you that night.
+      If you're struggling with addiction, we can connect you with treatment resources.
+
+  - id: "rules-002"
+    category: "rules"
+    title: "Personal Belongings"
+    content: |
+      You can bring personal belongings, but space is limited to what fits in a small locker.
+      We are not responsible for lost or stolen items.
+      Weapons of any kind are strictly prohibited.
+
+  - id: "curfew-001"
+    category: "curfew"
+    title: "Curfew Times"
+    content: |
+      Curfew is at 9 PM. You must be checked in and on the premises by then.
+      If you need to leave for work or an emergency, please speak with staff beforehand.
+      Repeated curfew violations may result in loss of bed privileges.
+
+  - id: "schedule-001"
+    category: "schedule"
+    title: "Daily Schedule"
+    content: |
+      Wake-up is at 6 AM. Breakfast is served from 6:30 to 7 AM.
+      All guests must leave the shelter by 7 AM.
+      You can return for check-in starting at 5 PM the same day.
+
+  - id: "services-001"
+    category: "services"
+    title: "Meals and Amenities"
+    content: |
+      We provide dinner and breakfast each day at no cost.
+      Shower facilities and basic toiletries are available.
+      Towels and bedding are provided and laundered regularly.
+
+  - id: "services-002"
+    category: "services"
+    title: "Support Services"
+    content: |
+      Our case managers can help you with housing applications, job searches, and benefits enrollment.
+      These services are available during daytime hours by appointment.
+      Ask staff how to schedule a meeting with a case manager.
+
+  - id: "location-001"
+    category: "location"
+    title: "Shelter Address"
+    content: |
+      Bethesda Mission Men's Shelter is located at 611 Reily Street in Harrisburg, Pennsylvania.
+      We're in the downtown area, near the Capitol building.
+      If you're taking the bus, the nearest stop is on Market Street.
+
+  - id: "emergency-001"
+    category: "emergency"
+    title: "Crisis Resources"
+    content: |
+      If you're in immediate danger, call 911.
+      The National Suicide Prevention Lifeline is available 24/7 at 988.
+      For mental health crisis support, the Crisis Text Line is available by texting HOME to 741741.
