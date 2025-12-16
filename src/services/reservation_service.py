@@ -37,7 +37,13 @@ class ReservationService:
         self.settings = get_settings()
         self.bed_service = BedService(db)
 
-    async def create_reservation(self, caller_hash: str) -> ReservationResponse:
+    async def create_reservation(
+        self, 
+        caller_hash: str,
+        caller_name: Optional[str] = None,
+        situation: Optional[str] = None,
+        needs: Optional[str] = None,
+    ) -> ReservationResponse:
         """
         Create a new reservation.
         
@@ -78,7 +84,15 @@ class ReservationService:
             created_at=now,
             expires_at=expires_at,
             status=ReservationStatus.ACTIVE,
+            # Store assessment info in notes or log it
         )
+        
+        # Log assessment info for staff
+        if caller_name or situation or needs:
+            import logging
+            logger = logging.getLogger("bethesda-agent")
+            logger.info(f"Reservation assessment - Name: {caller_name}, Situation: {situation}, Needs: {needs}")
+        
         self.db.add(reservation)
         await self.db.flush()
 

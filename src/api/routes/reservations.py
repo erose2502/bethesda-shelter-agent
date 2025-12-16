@@ -29,8 +29,14 @@ async def create_reservation(
     service = ReservationService(db)
     
     try:
+        # Use phone_hash if provided, otherwise use caller_hash
+        caller_id = reservation.caller_hash
+        
         result = await service.create_reservation(
-            caller_hash=reservation.caller_hash,
+            caller_hash=caller_id,
+            caller_name=reservation.caller_name,
+            situation=reservation.situation,
+            needs=reservation.needs,
         )
         return result
     except ValueError as e:

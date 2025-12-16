@@ -66,7 +66,10 @@ class BedSummary(BaseModel):
 
 class ReservationCreate(BaseModel):
     """Request to create a reservation."""
-    caller_hash: str = Field(..., min_length=8, max_length=64)
+    caller_hash: str = Field(..., min_length=1, max_length=64)
+    caller_name: Optional[str] = Field(None, max_length=100, description="Caller's first name")
+    situation: Optional[str] = Field(None, max_length=500, description="Brief description of caller's situation")
+    needs: Optional[str] = Field(None, max_length=500, description="Immediate needs (medical, mental health, etc.)")
 
 
 class ReservationResponse(BaseModel):
