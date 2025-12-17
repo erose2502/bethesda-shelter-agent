@@ -23,9 +23,11 @@ fi
 start_backend() {
     echo -e "${BLUE}🚀 Starting Backend API...${NC}"
     
-    # Activate virtual environment
+    # Activate virtual environment and load .env
     source .venv/bin/activate
-    
+    set -a
+    source .env
+    set +a
     # Start FastAPI server
     python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload &
     BACKEND_PID=$!
@@ -40,9 +42,11 @@ start_backend() {
 start_livekit() {
     echo -e "${BLUE}📞 Starting LiveKit Voice Agent...${NC}"
     
-    # Activate virtual environment
+    # Activate virtual environment and load .env
     source .venv/bin/activate
-    
+    set -a
+    source .env
+    set +a
     # Start LiveKit agent
     python src/livekit_agent.py start &
     LIVEKIT_PID=$!
