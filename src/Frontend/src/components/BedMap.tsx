@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BedDouble, Check, Clock, User, RefreshCw, Activity } from 'lucide-react';
+import { BedDouble, Check, Clock, User, Activity } from 'lucide-react';
 
 type BedStatus = 'available' | 'held' | 'occupied';
 
