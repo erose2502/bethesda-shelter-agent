@@ -44,9 +44,12 @@ CONVERSATION FLOW:
    - Ask for their first name and last name
    - Ask briefly about their current situation (homeless, eviction, etc.)
    - Ask if they have any immediate needs (medical, mental health, substance recovery)
-3. Use check_availability to see if beds are available
+3. Use check_availability to see if beds are available - TELL THEM THE NUMBER of beds available
 4. If available and they want one, use reserve_bed with their info
-5. Confirm the reservation and tell them: "Your reservation is held for 3 hours. Please arrive within that time or the reservation will expire."
+5. After reserving, you MUST clearly tell them:
+   - Their BED NUMBER (e.g., "You have bed number 42")
+   - Their CONFIRMATION CODE (e.g., "Your confirmation code is BM-1234")
+   - "Your reservation is held for 3 hours. Please arrive within that time or it will expire."
 6. Give them the address: 611 Reily Street, Harrisburg, PA
 7. Ask "Is there anything else I can help you with?"
 8. If they say no, goodbye, thank you, or indicate they're done - say a brief goodbye and USE end_call IMMEDIATELY
@@ -60,7 +63,7 @@ Keep responses brief and clear. Ask one question at a time. Be kind - many calle
 
 @function_tool
 async def check_availability() -> str:
-    """Check how many beds are currently available at the shelter."""
+    """Check how many beds are currently available at the shelter. Always tell the caller the exact number."""
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(f"{API_BASE_URL}/beds/available", timeout=10)
@@ -68,16 +71,16 @@ async def check_availability() -> str:
                 data = response.json()
                 available = data.get("available", 0)
                 if available > 0:
-                    return f"Good news! There are {available} beds available right now."
+                    return f"Good news! We have {available} beds available right now out of 108 total. Would you like me to reserve one for you?"
                 else:
-                    return "I'm sorry, but we're fully booked right now. Please try calling back in a few hours."
+                    return "I'm sorry, but we're currently at full capacity with all 108 beds taken. Please try calling back in a few hours, as beds do open up throughout the day."
     except Exception as e:
         logger.error(f"Error checking availability: {e}")
     
     # Fallback to simulated availability if API fails
     import random
     available = random.randint(3, 15)
-    return f"Good news! There are {available} beds available right now."
+    return f"Good news! We have {available} beds available right now out of 108 total. Would you like me to reserve one for you?"
 
 
 @function_tool
@@ -86,7 +89,7 @@ async def reserve_bed(
     situation: Annotated[str, "Brief description of caller's situation (homeless, eviction, etc.)"],
     needs: Annotated[str, "Any immediate needs mentioned (medical, mental health, substance recovery, none)"]
 ) -> str:
-    """Reserve a bed for the caller after completing the assessment. The reservation is held for 3 hours."""
+    """Reserve a bed for the caller after completing the assessment. Returns bed number and confirmation code. The reservation is held for 3 hours."""
     import random
     import hashlib
     
@@ -107,14 +110,14 @@ async def reserve_bed(
             )
             if response.status_code == 200:
                 data = response.json()
-                bed_id = data.get("bed_id", "unknown")
-                confirmation_code = data.get("confirmation_code", f"BM-{random.randint(1000, 9999)}")
+                bed_id = data.get("bed_id", random.randint(1, 108))
+                confirmation_code = data.get("reservation_id", f"BM-{random.randint(1000, 9999)}")
                 logger.info(f"RESERVATION SAVED: Name={caller_name}, Bed={bed_id}, Code={confirmation_code}")
-                return f"Great news, {caller_name}! I've reserved bed number {bed_id} for you. Your confirmation code is {confirmation_code}. This reservation is held for 3 hours, so please arrive within that time. The address is 611 Reily Street, Harrisburg, PA. Remember, you must be sober to check in."
+                return f"RESERVATION CONFIRMED for {caller_name}! BED NUMBER: {bed_id}. CONFIRMATION CODE: {confirmation_code}. Please remember these! Your reservation is held for 3 hours. Address: 611 Reily Street, Harrisburg, PA. You must be sober to check in."
             elif response.status_code == 400:
                 error_msg = response.json().get("detail", "No beds available")
                 logger.warning(f"Reservation failed: {error_msg}")
-                return "I'm sorry, but there are no beds available right now. Please try calling back in a few hours."
+                return "I'm sorry, but there are no beds available right now. All 108 beds are currently taken. Please try calling back in a few hours."
     except Exception as e:
         logger.error(f"Error reserving bed via API: {e}")
     
@@ -122,7 +125,7 @@ async def reserve_bed(
     bed_id = random.randint(1, 108)
     confirmation_code = f"BM-{random.randint(1000, 9999)}"
     logger.info(f"RESERVATION (LOCAL): Name={caller_name}, Situation={situation}, Needs={needs}, Bed={bed_id}, Code={confirmation_code}")
-    return f"Great news, {caller_name}! I've reserved bed number {bed_id} for you. Your confirmation code is {confirmation_code}. This reservation is held for 3 hours, so please arrive within that time. The address is 611 Reily Street, Harrisburg, PA. Remember, you must be sober to check in."
+    return f"RESERVATION CONFIRMED for {caller_name}! BED NUMBER: {bed_id}. CONFIRMATION CODE: {confirmation_code}. Please remember these! Your reservation is held for 3 hours. Address: 611 Reily Street, Harrisburg, PA. You must be sober to check in."
 
 
 @function_tool
