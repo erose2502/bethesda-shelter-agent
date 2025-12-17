@@ -7,6 +7,8 @@ from pydantic import field_validator
 
 
 class Settings(BaseSettings):
+    # Frontend
+    frontend_url: str = ""
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
