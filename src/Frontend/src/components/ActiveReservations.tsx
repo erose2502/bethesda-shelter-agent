@@ -32,57 +32,20 @@ export default function ActiveReservations() {
       const response = await fetch(`${API_URL}/reservations/`);
       if (response.ok) {
         const data = await response.json();
-        setReservations(data.reservations || generateMockReservations());
+        // Use real data, default to empty array if missing
+        setReservations(data.reservations || []);
       } else {
-        setReservations(generateMockReservations());
+        console.error('Failed to fetch reservations');
+        setReservations([]);
       }
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching reservations:', error);
-      setReservations(generateMockReservations());
-      setLastUpdated(new Date());
+      setReservations([]);
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
-
-  const generateMockReservations = (): Reservation[] => {
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
-    
-    return [
-      {
-        reservation_id: 'BM-1234',
-        bed_id: 15,
-        caller_name: 'John Smith',
-        situation: 'Homeless, lost job',
-        needs: 'None mentioned',
-        created_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        status: 'active'
-      },
-      {
-        reservation_id: 'BM-1235',
-        bed_id: 23,
-        caller_name: 'Michael Johnson',
-        situation: 'Eviction',
-        needs: 'Mental health support',
-        created_at: new Date(now.getTime() - 30 * 60 * 1000).toISOString(),
-        expires_at: new Date(expiresAt.getTime() - 30 * 60 * 1000).toISOString(),
-        status: 'active'
-      },
-      {
-        reservation_id: 'BM-1236',
-        bed_id: 42,
-        caller_name: 'David Williams',
-        situation: 'Domestic situation',
-        needs: 'None mentioned',
-        created_at: new Date(now.getTime() - 60 * 60 * 1000).toISOString(),
-        expires_at: new Date(expiresAt.getTime() - 60 * 60 * 1000).toISOString(),
-        status: 'active'
-      }
-    ];
   };
 
   const getTimeRemaining = (expiresAt: string): string => {
@@ -99,17 +62,41 @@ export default function ActiveReservations() {
   };
 
   const handleCheckIn = async (reservationId: string, bedId: number) => {
-    // TODO: Implement check-in API call
-    console.log(`Checking in reservation ${reservationId} to bed ${bedId}`);
-    alert(`Checked in: ${reservationId}`);
-    fetchReservations();
+    try {
+      const response = await fetch(`${API_URL}/beds/${bedId}/checkin?reservation_id=${reservationId}`, {
+        method: 'POST',
+      });
+      
+      if (response.ok) {
+        // Refresh list to remove the checked-in reservation
+        fetchReservations();
+      } else {
+        const err = await response.json();
+        alert(`Check-in failed: ${err.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error checking in:', error);
+      alert('Error connecting to server');
+    }
   };
 
   const handleCancel = async (reservationId: string) => {
-    // TODO: Implement cancel API call
-    console.log(`Cancelling reservation ${reservationId}`);
-    alert(`Cancelled: ${reservationId}`);
-    fetchReservations();
+    if (!confirm('Are you sure you want to cancel this reservation?')) return;
+    
+    try {
+      const response = await fetch(`${API_URL}/reservations/${reservationId}/cancel`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        fetchReservations();
+      } else {
+        alert('Failed to cancel reservation');
+      }
+    } catch (error) {
+      console.error('Error cancelling:', error);
+      alert('Error connecting to server');
+    }
   };
 
   if (loading) {

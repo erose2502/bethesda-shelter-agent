@@ -22,50 +22,34 @@ export default function BedMap() {
 
   useEffect(() => {
     fetchBeds();
-    const interval = setInterval(fetchBeds, 10000); // Refresh every 10 seconds for real-time updates
+    const interval = setInterval(fetchBeds, 5000); // Refresh every 5 seconds for faster updates
     return () => clearInterval(interval);
   }, []);
 
   const fetchBeds = async () => {
     setIsRefreshing(true);
     try {
-      const response = await fetch(`${API_URL}/beds/`);
+      // Fetch actual list from the new endpoint
+      const response = await fetch(`${API_URL}/beds/list`);
+      
       if (response.ok) {
-        const data = await response.json();
-        setBeds(data.available !== undefined ? generateMockBeds(data.available) : generateMockBeds(42));
-        calculateStats(data.available !== undefined ? generateMockBeds(data.available) : generateMockBeds(42));
+        const data: Bed[] = await response.json();
+        // Sort beds by ID to ensure grid is stable
+        const sortedBeds = data.sort((a, b) => a.bed_id - b.bed_id);
+        setBeds(sortedBeds);
+        calculateStats(sortedBeds);
       } else {
-        // Mock data for development
-        const mockBeds = generateMockBeds(42);
-        setBeds(mockBeds);
-        calculateStats(mockBeds);
+        console.error('Failed to fetch bed list');
+        // fallback only if empty
+        if (beds.length === 0) setBeds([]); 
       }
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching beds:', error);
-      // Mock data fallback
-      const mockBeds = generateMockBeds(42);
-      setBeds(mockBeds);
-      calculateStats(mockBeds);
-      setLastUpdated(new Date());
     } finally {
       setLoading(false);
       setIsRefreshing(false);
     }
-  };
-
-  const generateMockBeds = (availableCount: number): Bed[] => {
-    const allBeds: Bed[] = [];
-    for (let i = 1; i <= 108; i++) {
-      if (i <= availableCount) {
-        allBeds.push({ bed_id: i, status: 'available' });
-      } else if (i <= availableCount + 15) {
-        allBeds.push({ bed_id: i, status: 'held', reservation_id: `BM-${1000 + i}` });
-      } else {
-        allBeds.push({ bed_id: i, status: 'occupied', guest_name: `Guest ${i}` });
-      }
-    }
-    return allBeds;
   };
 
   const calculateStats = (bedList: Bed[]) => {
@@ -91,13 +75,40 @@ export default function BedMap() {
   };
 
   const handleStatusChange = async (bedId: number, newStatus: BedStatus) => {
-    // Update locally for immediate feedback
+    // Optimistic update locally
     setBeds(beds.map(b => b.bed_id === bedId ? { ...b, status: newStatus } : b));
     calculateStats(beds.map(b => b.bed_id === bedId ? { ...b, status: newStatus } : b));
     setSelectedBed(null);
     
-    // TODO: Send update to backend
-    console.log(`Bed ${bedId} status changed to ${newStatus}`);
+    // Perform actual API call
+    try {
+      let endpoint = '';
+      if (newStatus === 'available') {
+        endpoint = `${API_URL}/beds/${bedId}/checkout`;
+      } else if (newStatus === 'held') {
+        endpoint = `${API_URL}/beds/${bedId}/hold`;
+      } else if (newStatus === 'occupied') {
+        endpoint = `${API_URL}/beds/${bedId}/checkin`;
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        console.error('Failed to update bed status on server');
+        // Revert on failure (fetch fresh data)
+        fetchBeds();
+        alert('Failed to update status. Please try again.');
+      } else {
+        // Fetch fresh data to ensure sync
+        setTimeout(fetchBeds, 500); 
+      }
+    } catch (err) {
+      console.error('API Error:', err);
+      fetchBeds();
+    }
   };
 
   if (loading) {
@@ -241,7 +252,7 @@ export default function BedMap() {
                       hover:scale-110 hover:z-10
                       border-2
                     `}
-                    title={`Bed ${bed.bed_id} - Reserved`}
+                    title={`Bed ${bed.bed_id} - Reserved${bed.guest_name ? ` by ${bed.guest_name}` : ''}`}
                   >
                     {bed.bed_id}
                   </button>
@@ -286,8 +297,6 @@ export default function BedMap() {
           </div>
         )}
       </div>
-
-
 
       {/* Bed Details Modal */}
       {selectedBed && (

@@ -8,7 +8,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import get_settings
-from src.models.db_models import Reservation, ReservationStatus, Bed, BedStatus
+from src.models.db_models import Reservation, ReservationStatus, Bed, BedStatus, CallLog
 from src.models.schemas import ReservationResponse, ReservationDetail
 from src.services.bed_service import BedService
 
@@ -84,16 +84,21 @@ class ReservationService:
             created_at=now,
             expires_at=expires_at,
             status=ReservationStatus.ACTIVE,
-            # Store assessment info in notes or log it
         )
         
-        # Log assessment info for staff
-        if caller_name or situation or needs:
-            import logging
-            logger = logging.getLogger("bethesda-agent")
-            logger.info(f"Reservation assessment - Name: {caller_name}, Situation: {situation}, Needs: {needs}")
-        
         self.db.add(reservation)
+        
+        # Store assessment in CallLog for staff access
+        if caller_name or situation or needs:
+            call_log = CallLog(
+                call_sid=f"RES-{confirmation_code}",
+                caller_hash=caller_hash,
+                intent="make_reservation",
+                transcript_summary=f"Name: {caller_name or 'Not provided'}\nSituation: {situation or 'Not provided'}\nNeeds: {needs or 'None mentioned'}",
+                reservation_id=reservation_id,
+            )
+            self.db.add(call_log)
+        
         await self.db.flush()
 
         return ReservationResponse(
@@ -115,15 +120,39 @@ class ReservationService:
         if not reservation:
             return None
 
+        # Get associated call log for assessment data
+        log_result = await self.db.execute(
+            select(CallLog).where(CallLog.reservation_id == reservation_id)
+        )
+        call_log = log_result.scalar_one_or_none()
+
         now = datetime.now(timezone.utc)
         time_remaining = None
         if reservation.status == ReservationStatus.ACTIVE:
             remaining = reservation.expires_at - now
             time_remaining = max(0, int(remaining.total_seconds() / 60))
 
+        # Parse assessment data from call log
+        caller_name = "Unknown"
+        situation = "Not provided"
+        needs = "None mentioned"
+        
+        if call_log and call_log.transcript_summary:
+            lines = call_log.transcript_summary.split('\n')
+            for line in lines:
+                if line.startswith("Name: "):
+                    caller_name = line.replace("Name: ", "").strip()
+                elif line.startswith("Situation: "):
+                    situation = line.replace("Situation: ", "").strip()
+                elif line.startswith("Needs: "):
+                    needs = line.replace("Needs: ", "").strip()
+
         return {
             "reservation_id": reservation.reservation_id,
             "bed_id": reservation.bed_id,
+            "caller_name": caller_name,
+            "situation": situation,
+            "needs": needs,
             "status": reservation.status.value,
             "created_at": reservation.created_at.isoformat(),
             "expires_at": reservation.expires_at.isoformat(),
@@ -163,16 +192,43 @@ class ReservationService:
         reservations = result.scalars().all()
 
         now = datetime.now(timezone.utc)
-        return [
-            {
+        active_list = []
+        
+        for r in reservations:
+            # Get associated call log for assessment data
+            log_result = await self.db.execute(
+                select(CallLog).where(CallLog.reservation_id == r.reservation_id)
+            )
+            call_log = log_result.scalar_one_or_none()
+            
+            # Parse assessment data
+            caller_name = "Unknown"
+            situation = "Not provided"
+            needs = "None mentioned"
+            
+            if call_log and call_log.transcript_summary:
+                lines = call_log.transcript_summary.split('\n')
+                for line in lines:
+                    if line.startswith("Name: "):
+                        caller_name = line.replace("Name: ", "").strip()
+                    elif line.startswith("Situation: "):
+                        situation = line.replace("Situation: ", "").strip()
+                    elif line.startswith("Needs: "):
+                        needs = line.replace("Needs: ", "").strip()
+            
+            active_list.append({
                 "reservation_id": r.reservation_id,
                 "bed_id": r.bed_id,
+                "caller_name": caller_name,
+                "situation": situation,
+                "needs": needs,
                 "created_at": r.created_at.isoformat(),
                 "expires_at": r.expires_at.isoformat(),
+                "status": "active",
                 "time_remaining_minutes": max(0, int((r.expires_at - now).total_seconds() / 60)),
-            }
-            for r in reservations
-        ]
+            })
+        
+        return active_list
 
     async def expire_old_reservations(self) -> int:
         """

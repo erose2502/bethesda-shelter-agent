@@ -73,6 +73,12 @@ class Reservation(Base):
     caller_hash = Column(String(64), nullable=False, index=True)  # SHA-256 hash
     bed_id = Column(Integer, ForeignKey("beds.bed_id"), nullable=False)
     
+    # Guest info for dashboard display
+    caller_name = Column(String(128), nullable=True)
+    situation = Column(Text, nullable=True)
+    needs = Column(Text, nullable=True)
+    confirmation_code = Column(String(16), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     expires_at = Column(DateTime(timezone=True), nullable=False)
     checked_in_at = Column(DateTime(timezone=True), nullable=True)

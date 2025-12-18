@@ -137,6 +137,28 @@ class BedService:
             if bed.status != BedStatus.AVAILABLE:
                 raise ValueError(f"Bed {bed_id} is not available for walk-in")
 
+            # Create a reservation record for walk-in/manual check-in
+            from datetime import datetime, timedelta, timezone
+            import uuid
+            now = datetime.now(timezone.utc)
+            expires_at = now + timedelta(hours=3)
+            reservation_id = str(uuid.uuid4())
+            from src.models.db_models import Reservation, ReservationStatus
+            reservation = Reservation(
+                reservation_id=reservation_id,
+                bed_id=bed_id,
+                caller_hash=None,
+                caller_name="Manual Walk-in",
+                situation="Checked in at front desk",
+                needs="Not specified",
+                created_at=now,
+                expires_at=expires_at,
+                status=ReservationStatus.CHECKED_IN,
+                confirmation_code=None,
+            )
+            self.db.add(reservation)
+            await self.db.flush()
+
         bed.status = BedStatus.OCCUPIED
         await self.db.flush()
 

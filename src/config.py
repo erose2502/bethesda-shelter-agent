@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     reservation_hold_hours: int = 3
     reservation_expire_check_minutes: int = 5
 
+    # LiveKit
+    livekit_url: str = ""
+    livekit_api_key: str = ""
+    livekit_api_secret: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

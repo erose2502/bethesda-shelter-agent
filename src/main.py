@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
-from src.api.routes import voice, reservations, beds, health
+from src.api.routes import voice, reservations, beds, health, livekit
 from src.db.database import init_db
 
 
@@ -62,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(voice.router, prefix="/api/voice", tags=["Voice"])
     app.include_router(reservations.router, prefix="/api/reservations", tags=["Reservations"])
     app.include_router(beds.router, prefix="/api/beds", tags=["Beds"])
+    app.include_router(livekit.router, prefix="/api/livekit", tags=["LiveKit"])
 
     return app
 

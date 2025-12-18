@@ -159,7 +159,7 @@ async def entrypoint(ctx: JobContext):
         tts=openai.TTS(voice="alloy"),
         tools=[check_availability, reserve_bed, end_call],
         # Prevent interruptions while agent is speaking
-        allow_interruptions=False,
+        allow_interruptions=True,
         # Wait longer before assuming user is done speaking
         min_endpointing_delay=0.8,
     )
