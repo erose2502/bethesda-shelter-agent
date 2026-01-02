@@ -1,4 +1,4 @@
-"""SQLAlchemy database models - 108 beds, clean and minimal."""
+"""SQLAlchemy database models - 108 beds, clean and minimal (SQLite compatible)."""
 
 import enum
 from datetime import datetime
@@ -49,7 +49,7 @@ class Bed(Base):
         nullable=False,
     )
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         server_default=func.now(),
         onupdate=func.now(),
     )
@@ -79,9 +79,9 @@ class Reservation(Base):
     needs = Column(Text, nullable=True)
     confirmation_code = Column(String(16), nullable=True)
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    checked_in_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    expires_at = Column(DateTime, nullable=False)
+    checked_in_at = Column(DateTime, nullable=True)
     
     status = Column(
         Enum(ReservationStatus),
@@ -90,8 +90,9 @@ class Reservation(Base):
         index=True,
     )
 
-    # Relationship
+    # Relationships
     bed = relationship("Bed", back_populates="reservations")
+    call_logs = relationship("CallLog", primaryjoin="Reservation.reservation_id==foreign(CallLog.reservation_id)", lazy="selectin")
 
 
 class CallLog(Base):
@@ -115,7 +116,7 @@ class CallLog(Base):
     reservation_id = Column(String(36), nullable=True)
     risk_flag = Column(String(32), nullable=True)  # crisis, immediate_need, etc.
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
     duration_seconds = Column(Integer, nullable=True)
 
 
@@ -135,11 +136,11 @@ class ShelterPolicy(Base):
     
     # For versioning
     version = Column(Integer, default=1)
-    effective_date = Column(DateTime(timezone=True), server_default=func.now())
+    effective_date = Column(DateTime, server_default=func.now())
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(
-        DateTime(timezone=True),
+        DateTime,
         server_default=func.now(),
         onupdate=func.now(),
     )

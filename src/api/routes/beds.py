@@ -14,15 +14,20 @@ router = APIRouter()
 
 @router.get("/", response_model=BedSummary)
 async def get_bed_summary(db: AsyncSession = Depends(get_db)) -> BedSummary:
-    """Get current bed availability summary (counts only)."""
+    """Get current bed availability summary."""
     bed_service = BedService(db)
     return await bed_service.get_summary()
 
+
 @router.get("/list", response_model=List[BedDetail])
 async def get_all_beds_list(db: AsyncSession = Depends(get_db)) -> List[BedDetail]:
-    """Get detailed list of all 108 beds and their specific status."""
+    """
+    Get detailed list of all 108 beds.
+    Crucial for the Dashboard to show real status.
+    """
     bed_service = BedService(db)
     return await bed_service.get_all_beds()
+
 
 @router.get("/available")
 async def get_available_beds(db: AsyncSession = Depends(get_db)) -> dict:
@@ -45,9 +50,13 @@ async def get_bed_status(bed_id: int, db: AsyncSession = Depends(get_db)) -> dic
     status = await bed_service.get_bed_status(bed_id)
     return {"bed_id": bed_id, "status": status}
 
+
 @router.post("/{bed_id}/hold")
-async def hold_bed_manually(bed_id: int, db: AsyncSession = Depends(get_db)) -> dict:
-    """Manually mark a bed as HELD (Reserved)."""
+async def hold_bed_manual(bed_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    """
+    Manually mark a bed as HELD (Reserved).
+    This is what the 'Mark Reserved' button calls.
+    """
     if bed_id < 1 or bed_id > 108:
         raise HTTPException(status_code=404, detail="Bed not found")
     
@@ -55,9 +64,12 @@ async def hold_bed_manually(bed_id: int, db: AsyncSession = Depends(get_db)) -> 
     success = await bed_service.hold_bed(bed_id)
     
     if not success:
+        # If we can't hold it (e.g. it's already occupied), 400 error
         raise HTTPException(status_code=400, detail="Bed is not available to hold")
-        
+    
+    # No manual commit - get_db() dependency handles it
     return {"status": "held", "bed_id": bed_id}
+
 
 @router.post("/{bed_id}/checkin")
 async def checkin_bed(
@@ -73,6 +85,7 @@ async def checkin_bed(
     
     try:
         await bed_service.checkin(bed_id, reservation_id)
+        # No manual commit - get_db() dependency handles it
         return {"status": "checked_in", "bed_id": bed_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -80,7 +93,7 @@ async def checkin_bed(
 
 @router.post("/{bed_id}/checkout")
 async def checkout_bed(bed_id: int, db: AsyncSession = Depends(get_db)) -> dict:
-    """Check out a guest from a bed, making it available."""
+    """Check out a guest from a bed."""
     if bed_id < 1 or bed_id > 108:
         raise HTTPException(status_code=404, detail="Bed not found")
     
@@ -88,6 +101,7 @@ async def checkout_bed(bed_id: int, db: AsyncSession = Depends(get_db)) -> dict:
     
     try:
         await bed_service.checkout(bed_id)
+        # No manual commit - get_db() dependency handles it
         return {"status": "available", "bed_id": bed_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

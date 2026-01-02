@@ -61,26 +61,41 @@ IMPORTANT: When the caller says goodbye, thanks, no more questions, or indicates
 Keep responses brief and clear. Ask one question at a time. Be kind - many callers are in difficult situations."""
 
 
+# HTTP client timeout configuration (connect=10s, read=30s, write=10s, pool=5s)
+HTTP_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
+
+
 @function_tool
 async def check_availability() -> str:
     """Check how many beds are currently available at the shelter. Always tell the caller the exact number."""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{API_BASE_URL}/beds/available", timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                available = data.get("available", 0)
-                if available > 0:
-                    return f"Good news! We have {available} beds available right now out of 108 total. Would you like me to reserve one for you?"
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                # FIX: Correct endpoint is /api/beds/ not /api/beds/summary
+                response = await client.get(f"{API_BASE_URL}/api/beds/")
+                if response.status_code == 200:
+                    data = response.json()
+                    available = data.get("available", 0)
+                    logger.info(f"✅ Real bed availability: {available}/108")
+                    if available > 0:
+                        return f"Good news! We have {available} beds available right now out of 108 total. Would you like me to reserve one for you?"
+                    else:
+                        return "I'm sorry, but we're currently at full capacity with all 108 beds taken. Please try calling back in a few hours, as beds do open up throughout the day."
                 else:
-                    return "I'm sorry, but we're currently at full capacity with all 108 beds taken. Please try calling back in a few hours, as beds do open up throughout the day."
-    except Exception as e:
-        logger.error(f"Error checking availability: {e}")
-    
-    # Fallback to simulated availability if API fails
-    import random
-    available = random.randint(3, 15)
-    return f"Good news! We have {available} beds available right now out of 108 total. Would you like me to reserve one for you?"
+                    error_text = response.text
+                    logger.error(f"❌ Error checking availability - status {response.status_code}: {error_text}")
+                    # Return error message instead of fake data
+                    return "I'm having trouble checking bed availability right now. Let me transfer you to a staff member who can help."
+        except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            if attempt < max_retries:
+                logger.warning(f"⚠️ Timeout checking availability (attempt {attempt + 1}/{max_retries + 1}), retrying...")
+                continue
+            logger.error(f"❌ Error checking availability after {max_retries + 1} attempts: {type(e).__name__}: {e}")
+            return "I'm having trouble checking bed availability right now. Let me transfer you to a staff member who can help."
+        except Exception as e:
+            logger.error(f"❌ Error checking availability: {type(e).__name__}: {e}")
+            return "I'm having trouble checking bed availability right now. Let me transfer you to a staff member who can help."
 
 
 @function_tool
@@ -96,36 +111,42 @@ async def reserve_bed(
     # Create a unique hash for this caller (using name + timestamp)
     caller_hash = hashlib.sha256(f"{caller_name}{datetime.now().isoformat()}".encode()).hexdigest()[:16]
     
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{API_BASE_URL}/reservations/",
-                json={
-                    "caller_hash": caller_hash,
-                    "caller_name": caller_name,
-                    "situation": situation,
-                    "needs": needs,
-                },
-                timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                bed_id = data.get("bed_id", random.randint(1, 108))
-                confirmation_code = data.get("reservation_id", f"BM-{random.randint(1000, 9999)}")
-                logger.info(f"RESERVATION SAVED: Name={caller_name}, Bed={bed_id}, Code={confirmation_code}")
-                return f"RESERVATION CONFIRMED for {caller_name}! BED NUMBER: {bed_id}. CONFIRMATION CODE: {confirmation_code}. Please remember these! Your reservation is held for 3 hours. Address: 611 Reily Street, Harrisburg, PA. You must be sober to check in."
-            elif response.status_code == 400:
-                error_msg = response.json().get("detail", "No beds available")
-                logger.warning(f"Reservation failed: {error_msg}")
-                return "I'm sorry, but there are no beds available right now. All 108 beds are currently taken. Please try calling back in a few hours."
-    except Exception as e:
-        logger.error(f"Error reserving bed via API: {e}")
-    
-    # Fallback if API fails - still give them a reservation locally
-    bed_id = random.randint(1, 108)
-    confirmation_code = f"BM-{random.randint(1000, 9999)}"
-    logger.info(f"RESERVATION (LOCAL): Name={caller_name}, Situation={situation}, Needs={needs}, Bed={bed_id}, Code={confirmation_code}")
-    return f"RESERVATION CONFIRMED for {caller_name}! BED NUMBER: {bed_id}. CONFIRMATION CODE: {confirmation_code}. Please remember these! Your reservation is held for 3 hours. Address: 611 Reily Street, Harrisburg, PA. You must be sober to check in."
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+                response = await client.post(
+                    f"{API_BASE_URL}/api/reservations/",
+                    json={
+                        "caller_hash": caller_hash,
+                        "caller_name": caller_name,
+                        "situation": situation,
+                        "needs": needs,
+                    },
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    bed_id = data.get("bed_id")
+                    confirmation_code = data.get("confirmation_code")
+                    logger.info(f"✅ RESERVATION SAVED: Name={caller_name}, Bed={bed_id}, Code={confirmation_code}")
+                    return f"RESERVATION CONFIRMED for {caller_name}! BED NUMBER: {bed_id}. CONFIRMATION CODE: {confirmation_code}. Please remember these! Your reservation is held for 3 hours. Address: 611 Reily Street, Harrisburg, PA. You must be sober to check in."
+                elif response.status_code == 400:
+                    error_msg = response.json().get("detail", "No beds available")
+                    logger.warning(f"⚠️ Reservation failed: {error_msg}")
+                    return "I'm sorry, but there are no beds available right now. All 108 beds are currently taken. Please try calling back in a few hours."
+                else:
+                    error_text = response.text
+                    logger.error(f"❌ Error reserving bed - status {response.status_code}: {error_text}")
+                    return "I'm having trouble completing your reservation right now. Let me transfer you to a staff member who can help."
+        except (httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            if attempt < max_retries:
+                logger.warning(f"⚠️ Timeout reserving bed (attempt {attempt + 1}/{max_retries + 1}), retrying...")
+                continue
+            logger.error(f"❌ Error reserving bed via API after {max_retries + 1} attempts: {type(e).__name__}: {e}")
+            return "I'm having trouble completing your reservation right now. Let me transfer you to a staff member who can help."
+        except Exception as e:
+            logger.error(f"❌ Error reserving bed via API: {type(e).__name__}: {e}")
+            return "I'm having trouble completing your reservation right now. Let me transfer you to a staff member who can help."
 
 
 @function_tool

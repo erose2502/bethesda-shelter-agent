@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { BedDouble, Check, Clock, User, Activity } from 'lucide-react';
+import { Check, Clock, User, Activity } from 'lucide-react';
 
 type BedStatus = 'available' | 'held' | 'occupied';
 
@@ -10,7 +10,8 @@ interface Bed {
   reservation_id?: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://bethesda-shelter-agent-production.up.railway.app';
+// IMPORTANT: Ensure this points to your running backend
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 export default function BedMap() {
   const [beds, setBeds] = useState<Bed[]>([]);
@@ -20,35 +21,53 @@ export default function BedMap() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
+ useEffect(() => {
     fetchBeds();
-    const interval = setInterval(fetchBeds, 5000); // Refresh every 5 seconds for faster updates
-    return () => clearInterval(interval);
+    
+  // Poll every 2 seconds for near real-time updates when phone calls come in
+  const interval = setInterval(fetchBeds, 2000); 
+
+    // Update immediately when user clicks back to this tab
+    const handleFocus = () => fetchBeds();
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const fetchBeds = async () => {
+    // Prevent multiple fetches running at the same time
+    if (isRefreshing && beds.length > 0) return;
+    
     setIsRefreshing(true);
     try {
-      // Fetch actual list from the new endpoint
-      const response = await fetch(`${API_URL}/beds/list`);
+      // 3. Add 'cache: no-store' to prevent browser from showing old data
+      const response = await fetch(`${API_URL}/api/beds/list`, {
+        cache: 'no-store'
+      });
       
       if (response.ok) {
         const data: Bed[] = await response.json();
-        // Sort beds by ID to ensure grid is stable
         const sortedBeds = data.sort((a, b) => a.bed_id - b.bed_id);
-        setBeds(sortedBeds);
-        calculateStats(sortedBeds);
-      } else {
-        console.error('Failed to fetch bed list');
-        // fallback only if empty
-        if (beds.length === 0) setBeds([]); 
+        
+        // Only update state if data actually changed to prevent UI flickering
+        // (JSON.stringify is a quick way to compare simple arrays)
+        setBeds(prev => {
+           if (JSON.stringify(prev) !== JSON.stringify(sortedBeds)) {
+             calculateStats(sortedBeds);
+             return sortedBeds;
+           }
+           return prev;
+        });
       }
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching beds:', error);
     } finally {
-      setLoading(false);
       setIsRefreshing(false);
+      setLoading(false);
     }
   };
 
@@ -59,315 +78,106 @@ export default function BedMap() {
     setStats({ available, held, occupied });
   };
 
-  const getBedColor = (status: BedStatus): string => {
-    switch (status) {
-      case 'available':
-        return 'bg-gradient-to-br from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 shadow-lg shadow-emerald-900/50 border-emerald-400/30';
-      case 'held':
-        return 'bg-gradient-to-br from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 shadow-lg shadow-amber-900/50 border-amber-400/30';
-      case 'occupied':
-        return 'bg-gradient-to-br from-[#b8272f] to-[#8b1f25] hover:from-[#c02f37] hover:to-[#9a2329] shadow-lg shadow-red-900/50 border-[#b8272f]/30';
-    }
-  };
-
-  const handleBedClick = (bed: Bed) => {
-    setSelectedBed(bed);
-  };
-
   const handleStatusChange = async (bedId: number, newStatus: BedStatus) => {
-    // Optimistic update locally
-    setBeds(beds.map(b => b.bed_id === bedId ? { ...b, status: newStatus } : b));
-    calculateStats(beds.map(b => b.bed_id === bedId ? { ...b, status: newStatus } : b));
+    // 1. Optimistic Update (Immediate UI feedback)
+    setBeds(prev => prev.map(b => b.bed_id === bedId ? { ...b, status: newStatus } : b));
     setSelectedBed(null);
-    
-    // Perform actual API call
+
+    // 2. Send to Backend
     try {
       let endpoint = '';
-      if (newStatus === 'available') {
-        endpoint = `${API_URL}/beds/${bedId}/checkout`;
-      } else if (newStatus === 'held') {
-        endpoint = `${API_URL}/beds/${bedId}/hold`;
-      } else if (newStatus === 'occupied') {
-        endpoint = `${API_URL}/beds/${bedId}/checkin`;
-      }
+      if (newStatus === 'available') endpoint = `${API_URL}/api/beds/${bedId}/checkout`;
+      else if (newStatus === 'held') endpoint = `${API_URL}/api/beds/${bedId}/hold`;
+      else if (newStatus === 'occupied') endpoint = `${API_URL}/api/beds/${bedId}/checkin`;
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-
-      if (!response.ok) {
-        console.error('Failed to update bed status on server');
-        // Revert on failure (fetch fresh data)
-        fetchBeds();
-        alert('Failed to update status. Please try again.');
+      const res = await fetch(endpoint, { method: 'POST' });
+      
+      // 3. If failed, revert (fetch real data again)
+      if (!res.ok) {
+        console.error("Update failed");
+        fetchBeds(); 
+        alert("Failed to update status. Server might be offline.");
       } else {
-        // Fetch fresh data to ensure sync
-        setTimeout(fetchBeds, 500); 
+        // Success: Trigger a refresh just to be sure we are in sync
+        setTimeout(fetchBeds, 500);
       }
-    } catch (err) {
-      console.error('API Error:', err);
+    } catch (e) {
+      console.error(e);
       fetchBeds();
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-2xl text-purple-300">Loading bed data...</div>
-      </div>
-    );
-  }
+  const getBedColor = (status: BedStatus) => {
+    switch (status) {
+      case 'available': return 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400/30';
+      case 'held': return 'bg-amber-600 hover:bg-amber-500 border-amber-400/30';
+      case 'occupied': return 'bg-red-700 hover:bg-red-600 border-red-500/30';
+      default: return 'bg-slate-600';
+    }
+  };
 
-  const availableBeds = beds.filter(b => b.status === 'available');
-  const heldBeds = beds.filter(b => b.status === 'held');
-  const occupiedBeds = beds.filter(b => b.status === 'occupied');
+  if (loading && beds.length === 0) return <div className="p-10 text-center text-white">Loading Real Data...</div>;
 
   return (
     <div>
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
-        <div className="glass rounded-xl p-4 border-l-4 border-emerald-500 hover:scale-[1.02] transition-transform">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wide">Available</p>
-              <p className="text-4xl md:text-5xl font-bold text-emerald-400">{stats.available}</p>
-              <p className="text-xs text-slate-400 mt-1">Ready for check-in</p>
-            </div>
-            <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 rounded-xl flex items-center justify-center border border-emerald-500/30">
-              <Check className="w-7 h-7 md:w-8 md:h-8 text-emerald-400" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass rounded-xl p-4 border-l-4 border-amber-500 hover:scale-[1.02] transition-transform">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wide">Reserved</p>
-              <p className="text-4xl md:text-5xl font-bold text-amber-400">{stats.held}</p>
-              <p className="text-xs text-slate-400 mt-1">3-hour hold</p>
-            </div>
-            <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-amber-500/20 to-amber-600/10 rounded-xl flex items-center justify-center border border-amber-500/30">
-              <Clock className="w-7 h-7 md:w-8 md:h-8 text-amber-400" />
-            </div>
-          </div>
-        </div>
-        
-        <div className="glass rounded-xl p-4 border-l-4 border-[#b8272f] hover:scale-[1.02] transition-transform">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-300 text-xs font-semibold mb-1 uppercase tracking-wide">Occupied</p>
-              <p className="text-4xl md:text-5xl font-bold text-[#d4a017]">{stats.occupied}</p>
-              <p className="text-xs text-slate-400 mt-1">Currently in use</p>
-            </div>
-            <div className="w-14 h-14 md:w-16 md:h-16 bg-gradient-to-br from-[#b8272f]/20 to-[#8b1f25]/10 rounded-xl flex items-center justify-center border border-[#b8272f]/30">
-              <User className="w-7 h-7 md:w-8 md:h-8 text-[#d4a017]" />
-            </div>
-          </div>
-        </div>
+      {/* HEADER STATS */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <StatCard label="Available" value={stats.available} icon={<Check className="text-emerald-400" />} color="emerald" />
+        <StatCard label="Reserved" value={stats.held} icon={<Clock className="text-amber-400" />} color="amber" />
+        <StatCard label="Occupied" value={stats.occupied} icon={<User className="text-red-400" />} color="red" />
       </div>
 
-      {/* Bed Categories */}
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-3 md:mb-4 flex-wrap gap-2">
-          <h2 className="text-xl md:text-2xl font-bold text-white">Bed Status by Category</h2>
-          <div className="flex items-center gap-2 md:gap-3 flex-wrap">
-            <span className="text-sm font-semibold text-[#d4a017] bg-[#1a2332]/80 px-3 py-1.5 rounded-lg border border-[#d4a017]/30">
-              108 Total
-            </span>
-            <div className="flex items-center gap-2 text-xs text-slate-400 bg-[#1a2332]/80 px-2.5 py-1.5 rounded-lg border border-[#4a5568]/30">
-              {isRefreshing ? (
-                <>
-                  <Activity className="w-3 h-3 animate-pulse text-emerald-400" />
-                  <span>Updating...</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                  <span className="hidden sm:inline">Live • </span>
-                  <span>{lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                </>
-              )}
+      {/* BED GRID */}
+      <div className="bg-[#0a0f1a]/40 p-4 rounded-xl border border-slate-700/50">
+         <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-white">Live Bed Map</h2>
+            <div className="text-xs text-slate-400 flex items-center gap-2">
+                {isRefreshing && <Activity className="w-3 h-3 animate-spin" />}
+                Last updated: {lastUpdated.toLocaleTimeString()}
             </div>
-          </div>
-        </div>
-
-        {/* Available Beds */}
-        {availableBeds.length > 0 && (
-          <div className="mb-4 md:mb-5">
-            <div className="flex items-center gap-2 mb-2 md:mb-3">
-              <Check className="w-5 h-5 text-emerald-400" />
-              <h3 className="text-base md:text-lg font-semibold text-white">
-                Available Beds ({availableBeds.length})
-              </h3>
-            </div>
-            <div className="bg-[#0a0f1a]/40 rounded-xl p-3 md:p-4 border border-emerald-500/20">
-              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 xl:grid-cols-14 gap-2">
-                {availableBeds.map((bed) => (
-                  <button
-                    key={bed.bed_id}
-                    onClick={() => handleBedClick(bed)}
-                    className={`
-                      ${getBedColor(bed.status)}
-                      w-10 h-10 md:w-12 md:h-12
-                      rounded-lg
-                      flex items-center justify-center
-                      text-white font-semibold text-xs md:text-sm
-                      transition-all duration-300
-                      hover:scale-110 hover:z-10
-                      border-2
-                    `}
-                    title={`Bed ${bed.bed_id} - Available`}
-                  >
-                    {bed.bed_id}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Reserved Beds */}
-        {heldBeds.length > 0 && (
-          <div className="mb-4 md:mb-5">
-            <div className="flex items-center gap-2 mb-2 md:mb-3">
-              <Clock className="w-5 h-5 text-amber-400" />
-              <h3 className="text-base md:text-lg font-semibold text-white">
-                Reserved Beds ({heldBeds.length})
-              </h3>
-            </div>
-            <div className="bg-[#0a0f1a]/40 rounded-xl p-3 md:p-4 border border-amber-500/20">
-              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 xl:grid-cols-14 gap-2">
-                {heldBeds.map((bed) => (
-                  <button
-                    key={bed.bed_id}
-                    onClick={() => handleBedClick(bed)}
-                    className={`
-                      ${getBedColor(bed.status)}
-                      w-10 h-10 md:w-12 md:h-12
-                      rounded-lg
-                      flex items-center justify-center
-                      text-white font-semibold text-xs md:text-sm
-                      transition-all duration-300
-                      hover:scale-110 hover:z-10
-                      border-2
-                    `}
-                    title={`Bed ${bed.bed_id} - Reserved${bed.guest_name ? ` by ${bed.guest_name}` : ''}`}
-                  >
-                    {bed.bed_id}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Occupied Beds */}
-        {occupiedBeds.length > 0 && (
-          <div className="mb-4 md:mb-5">
-            <div className="flex items-center gap-2 mb-2 md:mb-3">
-              <User className="w-5 h-5 text-[#d4a017]" />
-              <h3 className="text-base md:text-lg font-semibold text-white">
-                Occupied Beds ({occupiedBeds.length})
-              </h3>
-            </div>
-            <div className="bg-[#0a0f1a]/40 rounded-xl p-3 md:p-4 border border-[#b8272f]/20">
-              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 xl:grid-cols-14 gap-2">
-                {occupiedBeds.map((bed) => (
-                  <button
-                    key={bed.bed_id}
-                    onClick={() => handleBedClick(bed)}
-                    className={`
-                      ${getBedColor(bed.status)}
-                      w-10 h-10 md:w-12 md:h-12
-                      rounded-lg
-                      flex items-center justify-center
-                      text-white font-semibold text-xs md:text-sm
-                      transition-all duration-300
-                      hover:scale-110 hover:z-10
-                      border-2
-                    `}
-                    title={`Bed ${bed.bed_id} - Occupied`}
-                  >
-                    {bed.bed_id}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+         </div>
+         
+         <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-2">
+            {beds.map(bed => (
+              <button
+                key={bed.bed_id}
+                onClick={() => setSelectedBed(bed)}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm transition-all border-2 shadow-lg ${getBedColor(bed.status)}`}
+              >
+                {bed.bed_id}
+              </button>
+            ))}
+         </div>
       </div>
 
-      {/* Bed Details Modal */}
+      {/* MODAL */}
       {selectedBed && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-50 p-3 md:p-4">
-          <div className="glass-dark rounded-2xl p-5 md:p-8 max-w-md w-full border border-[#4a5568]/50 shadow-2xl">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="w-12 h-12 md:w-14 md:h-14 bg-gradient-to-br from-[#b8272f] to-[#8b1f25] rounded-xl flex items-center justify-center">
-                <BedDouble className="w-6 h-6 md:w-7 md:h-7 text-white" />
-              </div>
-              <div>
-                <h3 className="text-2xl md:text-3xl font-bold text-white">
-                  Bed #{selectedBed.bed_id}
-                </h3>
-                <p className="text-slate-400 text-xs md:text-sm">Update bed status</p>
-              </div>
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="bg-slate-800 p-6 rounded-xl w-96 max-w-full border border-slate-600">
+            <h3 className="text-2xl font-bold text-white mb-4">Manage Bed #{selectedBed.bed_id}</h3>
+            <div className="space-y-3">
+              <button onClick={() => handleStatusChange(selectedBed.bed_id, 'available')} className="w-full p-3 bg-emerald-600 rounded text-white font-bold">Mark Available</button>
+              <button onClick={() => handleStatusChange(selectedBed.bed_id, 'held')} className="w-full p-3 bg-amber-600 rounded text-white font-bold">Mark Reserved</button>
+              <button onClick={() => handleStatusChange(selectedBed.bed_id, 'occupied')} className="w-full p-3 bg-red-700 rounded text-white font-bold">Mark Occupied</button>
+              <button onClick={() => setSelectedBed(null)} className="w-full p-3 bg-slate-600 rounded text-white mt-4">Cancel</button>
             </div>
-            
-            <div className="bg-[#0a0f1a]/60 rounded-xl p-4 mb-5 border border-[#4a5568]/30">
-              <p className="text-slate-400 text-xs font-semibold mb-2 uppercase tracking-wide">Current Status</p>
-              <p className="text-xl md:text-2xl font-bold text-[#d4a017] capitalize">{selectedBed.status}</p>
-              {selectedBed.guest_name && (
-                <div className="flex items-center gap-2 mt-3 text-sm">
-                  <User className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-300">Guest: <span className="font-semibold">{selectedBed.guest_name}</span></span>
-                </div>
-              )}
-              {selectedBed.reservation_id && (
-                <div className="flex items-center gap-2 mt-2 text-sm">
-                  <Clock className="w-4 h-4 text-slate-400" />
-                  <span className="text-slate-300">Reservation: <span className="font-mono font-semibold">{selectedBed.reservation_id}</span></span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-2.5 mb-5">
-              <p className="text-slate-300 text-xs font-semibold mb-2 uppercase tracking-wide">Update Status:</p>
-              <button
-                onClick={() => handleStatusChange(selectedBed.bed_id, 'available')}
-                className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-lg text-white text-base font-semibold transition-all duration-300 shadow-lg hover:shadow-emerald-900/50 border border-emerald-400/30"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <Check className="w-4 h-4" /> Mark Available
-                </span>
-              </button>
-              <button
-                onClick={() => handleStatusChange(selectedBed.bed_id, 'held')}
-                className="w-full py-3 px-4 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 rounded-lg text-white text-base font-semibold transition-all duration-300 shadow-lg hover:shadow-amber-900/50 border border-amber-400/30"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <Clock className="w-4 h-4" /> Mark Reserved
-                </span>
-              </button>
-              <button
-                onClick={() => handleStatusChange(selectedBed.bed_id, 'occupied')}
-                className="w-full py-3 px-4 bg-gradient-to-r from-[#b8272f] to-[#8b1f25] hover:from-[#c02f37] hover:to-[#9a2329] rounded-lg text-white text-base font-semibold transition-all duration-300 shadow-lg hover:shadow-red-900/50 border border-[#b8272f]/30"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <User className="w-4 h-4" /> Mark Occupied
-                </span>
-              </button>
-            </div>
-
-            <button
-              onClick={() => setSelectedBed(null)}
-              className="w-full py-3 px-4 bg-[#2d3748]/80 hover:bg-[#4a5568]/80 rounded-lg text-white text-base font-semibold transition-all duration-300 border border-[#4a5568]/50"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function StatCard({ label, value, icon, color }: any) {
+  return (
+    <div className={`p-4 rounded-xl border-l-4 bg-slate-800/50 border-${color}-500`}>
+      <div className="flex justify-between items-center">
+        <div>
+          <p className="text-slate-400 text-xs uppercase">{label}</p>
+          <p className={`text-3xl font-bold text-${color}-400`}>{value}</p>
+        </div>
+        <div className="p-3 bg-white/5 rounded-lg">{icon}</div>
+      </div>
+    </div>
+  )
 }

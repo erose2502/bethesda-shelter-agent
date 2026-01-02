@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { User, BedDouble, Clock, AlertCircle, CheckCircle, XCircle, RefreshCw, Phone, Activity } from 'lucide-react';
+import config from '../config';
 
 interface Reservation {
   reservation_id: string;
@@ -12,8 +13,6 @@ interface Reservation {
   status: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://bethesda-shelter-agent-production.up.railway.app';
-
 export default function ActiveReservations() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,29 +21,55 @@ export default function ActiveReservations() {
 
   useEffect(() => {
     fetchReservations();
-    const interval = setInterval(fetchReservations, 10000); // Refresh every 10 seconds for real-time updates
-    return () => clearInterval(interval);
+    // Poll every 1 second
+    const interval = setInterval(fetchReservations, 1000);
+    
+    const handleFocus = () => fetchReservations();
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const fetchReservations = async () => {
+    // Avoid double-fetching
+    if (isRefreshing && reservations.length > 0) return;
+
     setIsRefreshing(true);
     try {
-      const response = await fetch(`${API_URL}/reservations/`);
+      const response = await fetch(`${config.apiUrl}/api/reservations/`, {
+        cache: 'no-store'
+      });
+
       if (response.ok) {
         const data = await response.json();
-        // Use real data, default to empty array if missing
-        setReservations(data.reservations || []);
+        const newReservations = data.reservations || [];
+
+        setReservations(prev => {
+          if (JSON.stringify(prev) !== JSON.stringify(newReservations)) {
+            return newReservations;
+          }
+          return prev;
+        });
       } else {
-        console.error('Failed to fetch reservations');
-        setReservations([]);
+        // Try to log and display the error response body
+        let errorText = await response.text();
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorText = errorJson.detail || errorText;
+        } catch {}
+        console.error('Error fetching reservations:', errorText);
+        alert('Error fetching reservations: ' + errorText);
       }
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching reservations:', error);
-      setReservations([]);
+      alert('Error fetching reservations: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
-      setLoading(false);
       setIsRefreshing(false);
+      setLoading(false);
     }
   };
 
@@ -63,7 +88,7 @@ export default function ActiveReservations() {
 
   const handleCheckIn = async (reservationId: string, bedId: number) => {
     try {
-      const response = await fetch(`${API_URL}/beds/${bedId}/checkin?reservation_id=${reservationId}`, {
+      const response = await fetch(`${config.apiUrl}/api/beds/${bedId}/checkin?reservation_id=${reservationId}`, {
         method: 'POST',
       });
       
@@ -84,7 +109,7 @@ export default function ActiveReservations() {
     if (!confirm('Are you sure you want to cancel this reservation?')) return;
     
     try {
-      const response = await fetch(`${API_URL}/reservations/${reservationId}/cancel`, {
+      const response = await fetch(`${config.apiUrl}/api/reservations/${reservationId}/cancel`, {
         method: 'POST',
       });
 

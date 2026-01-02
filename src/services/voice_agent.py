@@ -24,13 +24,6 @@ class CallContext:
 class VoiceAgentService:
     """
     Main voice agent orchestrator.
-    
-    Flow:
-    1. Receive transcript
-    2. Classify intent (GPT-4)
-    3. Query RAG for shelter-specific info
-    4. Check bed availability / create reservation
-    5. Generate response
     """
 
     def __init__(self, db_session=None):
@@ -45,11 +38,7 @@ class VoiceAgentService:
         caller_hash: str,
         call_sid: str,
     ) -> VoiceAgentResult:
-        """
-        Process a voice request and generate appropriate response.
-        
-        This is the main entry point for all voice interactions.
-        """
+        """Process a voice request and generate appropriate response."""
         context = CallContext(caller_hash=caller_hash, call_sid=call_sid)
 
         # 1. Classify intent
@@ -82,6 +71,8 @@ class VoiceAgentService:
         """Handle bed availability questions."""
         bed_service = BedService(self.db)
         summary = await bed_service.get_summary()
+        import json
+        print("[VoiceAgent] Bed summary JSON:", json.dumps(summary.dict(), indent=2))
 
         if summary.available > 0:
             response = (
@@ -97,12 +88,10 @@ class VoiceAgentService:
                 followup_prompt="Would you like to reserve a bed?",
             )
         else:
-            # No beds available
             response = (
                 "I'm sorry, but we don't have any beds available right now. "
                 f"All {summary.total} beds are currently occupied or reserved. "
-                "Would you like me to tell you about other shelter options in the area, "
-                "or would you like to know when beds typically become available?"
+                "Would you like me to tell you about other shelter options in the area?"
             )
             return VoiceAgentResult(
                 intent=Intent.BED_INQUIRY,
@@ -116,10 +105,17 @@ class VoiceAgentService:
         reservation_service = ReservationService(self.db)
 
         try:
+            # 1. Create the reservation with default "Voice Caller" info
             reservation = await reservation_service.create_reservation(
-                caller_hash=context.caller_hash
+                caller_hash=context.caller_hash,
+                caller_name="Voice Caller",
+                situation="Reservation via Phone",
+                needs="Shelter Bed"
             )
             context.reservation = reservation
+
+            # 2. Flush to persist data (voice route will commit when done)
+            await self.db.flush()
 
             response = (
                 f"Great, I've reserved bed number {reservation.bed_id} for you. "
@@ -159,39 +155,34 @@ class VoiceAgentService:
         self, transcript: str, context: CallContext
     ) -> VoiceAgentResult:
         """Handle questions about shelter rules using RAG."""
-        # Query RAG for relevant policy info
         policy_info = await self.rag_service.query(transcript)
 
         if policy_info:
             response = policy_info
         else:
-            # Fallback to basic rules
             response = (
                 "Here are the key rules for our men's shelter: "
                 "Check-in is between 5 PM and 7 PM. "
                 "Curfew is at 9 PM. "
                 "We require sobriety - no alcohol or drugs on the premises. "
-                "Guests must leave by 7 AM and can return for check-in the same evening. "
-                "Would you like more details about any specific rule?"
+                "Guests must leave by 7 AM and can return for check-in the same evening."
             )
 
         return VoiceAgentResult(
             intent=Intent.SHELTER_RULES,
             response_text=response,
             needs_followup=True,
-            followup_prompt="Would you like to know anything else about our rules or services?",
+            followup_prompt="Would you like to know anything else about our rules?",
         )
 
     async def _handle_crisis(self, context: CallContext) -> VoiceAgentResult:
-        """Handle crisis situations - PRIORITY."""
+        """Handle crisis situations."""
         response = (
             "I hear that you're going through a difficult time. "
             "Your safety is the most important thing right now. "
             "If you're in immediate danger, please call 911. "
             "If you need to talk to someone right now, "
-            "the National Crisis Line is available 24/7 at 988. "
-            "Would you like me to connect you with a staff member, "
-            "or can I help you with shelter services?"
+            "the National Crisis Line is available 24/7 at 988."
         )
         return VoiceAgentResult(
             intent=Intent.CRISIS,
@@ -203,13 +194,11 @@ class VoiceAgentService:
 
     async def _handle_directions(self, context: CallContext) -> VoiceAgentResult:
         """Handle requests for directions/location."""
-        # TODO: Pull actual address from config/RAG
         response = (
             "Bethesda Mission Men's Shelter is located at "
             "611 Reily Street in Harrisburg, Pennsylvania. "
             "We're open for check-in from 5 PM to 7 PM every day. "
-            "If you're walking, we're near the downtown area. "
-            "Would you like any other information?"
+            "If you're walking, we're near the downtown area."
         )
         return VoiceAgentResult(
             intent=Intent.DIRECTIONS,
@@ -220,10 +209,7 @@ class VoiceAgentService:
 
     def _handle_transfer_request(self, context: CallContext) -> VoiceAgentResult:
         """Handle requests to speak with staff."""
-        response = (
-            "Of course, I'll connect you with a staff member. "
-            "Please hold while I transfer your call."
-        )
+        response = "Of course, I'll connect you with a staff member. Please hold."
         return VoiceAgentResult(
             intent=Intent.TRANSFER_STAFF,
             response_text=response,
@@ -235,16 +221,10 @@ class VoiceAgentService:
     ) -> VoiceAgentResult:
         """Handle general questions using RAG."""
         policy_info = await self.rag_service.query(transcript)
-
         if policy_info:
             response = policy_info
         else:
-            response = (
-                "I'd be happy to help you with that. "
-                "I can help with bed availability, making reservations, "
-                "shelter rules, and directions. "
-                "What would you like to know?"
-            )
+            response = "I'd be happy to help. I can check bed availability or answer questions about rules."
 
         return VoiceAgentResult(
             intent=Intent.OTHER,

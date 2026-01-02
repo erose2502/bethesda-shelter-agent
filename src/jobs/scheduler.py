@@ -1,59 +1,66 @@
-"""Background tasks for the shelter agent."""
+"""APScheduler-based background jobs - replaces Celery + Redis."""
 
 import asyncio
+import logging
 from datetime import datetime, timedelta, timezone
 
-from src.jobs.celery_app import celery_app
-from src.db.database import get_session_factory
-from src.services.reservation_service import ReservationService
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
+
+from src.config import get_settings
+
+logger = logging.getLogger(__name__)
+
+# Global scheduler instance
+scheduler: AsyncIOScheduler | None = None
 
 
-def run_async(coro):
-    """Helper to run async code in Celery tasks."""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+def get_scheduler() -> AsyncIOScheduler:
+    """Get or create the scheduler instance."""
+    global scheduler
+    if scheduler is None:
+        scheduler = AsyncIOScheduler(timezone="America/New_York")
+    return scheduler
 
 
-@celery_app.task(name="src.jobs.tasks.expire_reservations")
-def expire_reservations():
+async def expire_reservations():
     """
     Expire old reservations and release beds.
     
-    Runs every 5 minutes.
+    Runs every 5 minutes (configurable).
     This preserves fairness - no one can hold a bed forever.
     """
-    async def _expire():
+    from src.db.database import get_session_factory
+    from src.services.reservation_service import ReservationService
+    
+    try:
         factory = get_session_factory()
         async with factory() as session:
             service = ReservationService(session)
             count = await service.expire_old_reservations()
             await session.commit()
+            
+            if count > 0:
+                logger.info(f"✅ Expired {count} reservations")
+            
             return count
-
-    expired_count = run_async(_expire())
-    
-    if expired_count > 0:
-        print(f"✅ Expired {expired_count} reservations")
-    
-    return {"expired": expired_count}
+    except Exception as e:
+        logger.error(f"❌ Error expiring reservations: {e}")
+        return 0
 
 
-@celery_app.task(name="src.jobs.tasks.generate_daily_summary")
-def generate_daily_summary():
+async def generate_daily_summary():
     """
     Generate daily summary for staff.
     
     Runs at 7 AM daily.
     """
-    async def _generate():
-        from sqlalchemy import select, func
-        from src.db.database import get_session_factory
-        from src.models.db_models import Bed, BedStatus, Reservation, CallLog, ReservationStatus
-        
+    from sqlalchemy import select, func
+    from src.db.database import get_session_factory
+    from src.models.db_models import Bed, BedStatus, Reservation, CallLog, ReservationStatus
+    
+    try:
         factory = get_session_factory()
         async with factory() as session:
             now = datetime.now(timezone.utc)
@@ -96,7 +103,7 @@ def generate_daily_summary():
             )
             risk_flags = risk_result.scalar() or 0
             
-            return {
+            summary = {
                 "date": now.isoformat(),
                 "beds": bed_counts,
                 "total_calls": total_calls,
@@ -104,25 +111,27 @@ def generate_daily_summary():
                 "check_ins": check_ins,
                 "risk_flags": risk_flags,
             }
+            
+            logger.info(f"📊 Daily Summary: {summary}")
+            return summary
+            
+    except Exception as e:
+        logger.error(f"❌ Error generating daily summary: {e}")
+        return {}
 
-    summary = run_async(_generate())
-    print(f"📊 Daily Summary: {summary}")
-    return summary
 
-
-@celery_app.task(name="src.jobs.tasks.cleanup_old_data")
-def cleanup_old_data(days_to_keep: int = 30):
+async def cleanup_old_data(days_to_keep: int = 30):
     """
     Clean up old call logs and expired reservations.
     
     Runs weekly.
     Privacy-first: auto-delete after X days.
     """
-    async def _cleanup():
-        from sqlalchemy import delete
-        from src.db.database import get_session_factory
-        from src.models.db_models import CallLog, Reservation, ReservationStatus
-        
+    from sqlalchemy import delete
+    from src.db.database import get_session_factory
+    from src.models.db_models import CallLog, Reservation, ReservationStatus
+    
+    try:
         factory = get_session_factory()
         async with factory() as session:
             cutoff = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
@@ -146,11 +155,66 @@ def cleanup_old_data(days_to_keep: int = 30):
             
             await session.commit()
             
-            return {
+            result = {
                 "calls_deleted": calls_deleted,
                 "reservations_deleted": reservations_deleted,
             }
+            
+            logger.info(f"🧹 Cleanup complete: {result}")
+            return result
+            
+    except Exception as e:
+        logger.error(f"❌ Error cleaning up old data: {e}")
+        return {}
 
-    result = run_async(_cleanup())
-    print(f"🧹 Cleanup complete: {result}")
-    return result
+
+def setup_scheduler() -> AsyncIOScheduler:
+    """Configure and return the scheduler with all jobs."""
+    settings = get_settings()
+    sched = get_scheduler()
+    
+    # Expire reservations every N minutes (default 5)
+    sched.add_job(
+        expire_reservations,
+        IntervalTrigger(minutes=settings.reservation_expire_check_minutes),
+        id="expire_reservations",
+        name="Expire old reservations",
+        replace_existing=True,
+    )
+    
+    # Daily summary at 7 AM
+    sched.add_job(
+        generate_daily_summary,
+        CronTrigger(hour=7, minute=0),
+        id="daily_summary",
+        name="Generate daily summary",
+        replace_existing=True,
+    )
+    
+    # Weekly cleanup on Sunday at 2 AM
+    sched.add_job(
+        cleanup_old_data,
+        CronTrigger(day_of_week="sun", hour=2, minute=0),
+        id="cleanup_old_data",
+        name="Clean up old data",
+        replace_existing=True,
+    )
+    
+    return sched
+
+
+def start_scheduler():
+    """Start the background scheduler."""
+    sched = setup_scheduler()
+    if not sched.running:
+        sched.start()
+        logger.info("📅 Background scheduler started")
+    return sched
+
+
+def stop_scheduler():
+    """Stop the background scheduler."""
+    global scheduler
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
+        logger.info("📅 Background scheduler stopped")

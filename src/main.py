@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.config import get_settings
 from src.api.routes import voice, reservations, beds, health, livekit
 from src.db.database import init_db
+from src.jobs.scheduler import start_scheduler, stop_scheduler
 
 
 @asynccontextmanager
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     print("🚀 Starting Bethesda Shelter Agent...")
     print(f"   Total beds configured: {settings.total_beds}")
+    print(f"   Database: SQLite ({settings.database_path})")
     
     # Try to init database, but don't crash if it fails
     try:
@@ -26,10 +28,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         print(f"⚠️ Database init failed (will retry on first request): {e}")
     
+    # Start background scheduler (replaces Celery)
+    try:
+        start_scheduler()
+        print("✅ Background scheduler started")
+    except Exception as e:
+        print(f"⚠️ Scheduler start failed: {e}")
+    
     yield
     
     # Shutdown
     print("👋 Shutting down Bethesda Shelter Agent...")
+    stop_scheduler()
 
 
 def create_app() -> FastAPI:

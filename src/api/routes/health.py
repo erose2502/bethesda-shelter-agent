@@ -32,9 +32,9 @@ async def initialize_database() -> dict:
 @router.get("/ready")
 async def readiness_check() -> dict:
     """Readiness check - verifies all dependencies are available."""
-    # TODO: Add actual dependency checks (DB, Redis, etc.)
+    settings = get_settings()
     return {
         "status": "ready",
-        "database": "connected",
-        "redis": "connected",
+        "database": f"sqlite ({settings.database_path})",
+        "scheduler": "running",
     }

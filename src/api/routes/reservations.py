@@ -15,32 +15,22 @@ async def create_reservation(
     reservation: ReservationCreate,
     db: AsyncSession = Depends(get_db),
 ) -> ReservationResponse:
-    """
-    Create a bed reservation.
-    
-    Rules (enforced):
-    - First call = first reservation (no favoritism)
-    - Hold time: 2-3 hours (configurable)
-    - Auto-expires if not checked in
-    - No double booking
-    
-    Returns reservation code for check-in.
-    """
+    """Create a bed reservation."""
     service = ReservationService(db)
     
     try:
-        # Use phone_hash if provided, otherwise use caller_hash
-        caller_id = reservation.caller_hash
-        
         result = await service.create_reservation(
-            caller_hash=caller_id,
+            caller_hash=reservation.caller_hash,
             caller_name=reservation.caller_name,
             situation=reservation.situation,
             needs=reservation.needs,
         )
+        # No manual commit - get_db() dependency handles it
         return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback, logging
+        logging.error(f"Error in create_reservation: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=400, detail=f"{type(e).__name__}: {e}")
 
 
 @router.get("/{reservation_id}")
@@ -63,11 +53,12 @@ async def cancel_reservation(
     reservation_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Cancel an active reservation, releasing the bed."""
+    """Cancel an active reservation."""
     service = ReservationService(db)
     
     try:
         await service.cancel_reservation(reservation_id)
+        # No manual commit - get_db() dependency handles it
         return {"status": "cancelled", "reservation_id": reservation_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -79,6 +70,10 @@ async def list_active_reservations(
 ) -> dict:
     """List all active reservations (staff dashboard use)."""
     service = ReservationService(db)
+    
+    # Refresh to get latest data (expire_all is sync, not async)
+    db.expire_all()
+    
     reservations = await service.list_active()
     
     return {
@@ -91,14 +86,10 @@ async def list_active_reservations(
 async def expire_old_reservations(
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """
-    Manually trigger reservation expiration.
-    
-    Normally runs via background job every 5 minutes.
-    This endpoint allows manual triggering for testing/admin.
-    """
+    """Manually trigger reservation expiration."""
     service = ReservationService(db)
     expired_count = await service.expire_old_reservations()
+    # No manual commit - get_db() dependency handles it
     
     return {
         "expired": expired_count,

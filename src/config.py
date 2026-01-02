@@ -1,9 +1,9 @@
 """Application configuration using Pydantic Settings."""
 
 from functools import lru_cache
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -11,25 +11,24 @@ class Settings(BaseSettings):
     frontend_url: str = ""
     """Application settings loaded from environment variables."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        extra="ignore"  # Ignore extra env vars (e.g., old PINECONE, REDIS settings)
+    )
 
     # App
     app_env: str = "development"
     debug: bool = False
     secret_key: str = "change-me-in-production"
 
-    # Database
-    database_url: str = "postgresql+asyncpg://localhost:5432/bethesda_shelter"
-
-    @field_validator("database_url", mode="before")
-    @classmethod
-    def fix_database_url(cls, v: str) -> str:
-        """Convert postgres:// to postgresql+asyncpg:// for Railway compatibility."""
-        if v.startswith("postgres://"):
-            return v.replace("postgres://", "postgresql+asyncpg://", 1)
-        if v.startswith("postgresql://") and "+asyncpg" not in v:
-            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return v
+    # Database - SQLite (file path)
+    database_path: str = "bethesda_shelter.db"
+    
+    @property
+    def database_url(self) -> str:
+        """SQLite connection URL for SQLAlchemy."""
+        return f"sqlite+aiosqlite:///{self.database_path}"
 
     # Twilio
     twilio_account_sid: str = ""
@@ -39,13 +38,8 @@ class Settings(BaseSettings):
     # OpenAI
     openai_api_key: str = ""
 
-    # Pinecone
-    pinecone_api_key: str = ""
-    pinecone_environment: str = ""
-    pinecone_index_name: str = "bethesda-shelter-policies"
-
-    # Redis
-    redis_url: str = "redis://localhost:6379/0"
+    # ChromaDB - In-memory by default, or persistent path
+    chromadb_persist_path: str = ""  # Empty = in-memory
 
     # Shelter Config
     total_beds: int = 108
