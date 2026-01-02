@@ -22,12 +22,19 @@ class Settings(BaseSettings):
     debug: bool = False
     secret_key: str = "change-me-in-production"
 
-    # Database - SQLite (file path)
-    database_path: str = "bethesda_shelter.db"
+    # Database - supports both PostgreSQL (production) and SQLite (local dev)
+    database_url: str = ""  # PostgreSQL URL for production (e.g., postgresql+asyncpg://...)
+    database_path: str = "bethesda_shelter.db"  # SQLite fallback for local dev
     
     @property
-    def database_url(self) -> str:
-        """SQLite connection URL for SQLAlchemy."""
+    def get_database_url(self) -> str:
+        """Get database URL - prefers DATABASE_URL (Postgres) over DATABASE_PATH (SQLite)."""
+        if self.database_url:
+            # Ensure we use asyncpg for async support
+            url = self.database_url
+            if url.startswith("postgresql://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
         return f"sqlite+aiosqlite:///{self.database_path}"
 
     # Twilio

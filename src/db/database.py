@@ -1,4 +1,4 @@
-"""Database connection and session management - SQLite version."""
+"""Database connection and session management - supports PostgreSQL and SQLite."""
 
 from typing import AsyncGenerator
 
@@ -16,16 +16,28 @@ _async_session_factory = None
 
 
 def get_engine():
-    """Get or create the async database engine for SQLite."""
+    """Get or create the async database engine (PostgreSQL or SQLite)."""
     global _engine
     if _engine is None:
         settings = get_settings()
-        _engine = create_async_engine(
-            settings.database_url,
-            echo=settings.debug,
-            # SQLite-specific settings
-            connect_args={"check_same_thread": False},
-        )
+        db_url = settings.get_database_url
+        
+        # Configure engine based on database type
+        if "sqlite" in db_url:
+            _engine = create_async_engine(
+                db_url,
+                echo=settings.debug,
+                connect_args={"check_same_thread": False},
+            )
+        else:
+            # PostgreSQL
+            _engine = create_async_engine(
+                db_url,
+                echo=settings.debug,
+                pool_pre_ping=True,
+                pool_size=5,
+                max_overflow=10,
+            )
     return _engine
 
 
