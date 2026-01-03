@@ -1,0 +1,7 @@
+name: bethesda-shelter-agent
+entrypoint: src/livekit_agent.py
+
+# Environment variables (set these in LiveKit Cloud dashboard)
+env:
+  - OPENAI_API_KEY
+  - API_BASE_URL

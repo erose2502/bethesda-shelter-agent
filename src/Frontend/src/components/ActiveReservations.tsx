@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { User, BedDouble, Clock, AlertCircle, CheckCircle, XCircle, RefreshCw, Phone, Activity } from 'lucide-react';
+import { BedDouble, Clock, AlertCircle, CheckCircle, XCircle, Activity } from 'lucide-react';
 import config from '../config';
 
 interface Reservation {
@@ -18,15 +18,13 @@ export default function ActiveReservations() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
 
   useEffect(() => {
     fetchReservations();
-    // Poll every 1 second
     const interval = setInterval(fetchReservations, 1000);
-    
     const handleFocus = () => fetchReservations();
     window.addEventListener('focus', handleFocus);
-
     return () => {
       clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
@@ -34,39 +32,23 @@ export default function ActiveReservations() {
   }, []);
 
   const fetchReservations = async () => {
-    // Avoid double-fetching
     if (isRefreshing && reservations.length > 0) return;
-
     setIsRefreshing(true);
     try {
-      const response = await fetch(`${config.apiUrl}/api/reservations/`, {
-        cache: 'no-store'
-      });
-
+      const response = await fetch(`${config.apiUrl}/api/reservations/`, { cache: 'no-store' });
       if (response.ok) {
         const data = await response.json();
         const newReservations = data.reservations || [];
-
         setReservations(prev => {
           if (JSON.stringify(prev) !== JSON.stringify(newReservations)) {
             return newReservations;
           }
           return prev;
         });
-      } else {
-        // Try to log and display the error response body
-        let errorText = await response.text();
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorText = errorJson.detail || errorText;
-        } catch {}
-        console.error('Error fetching reservations:', errorText);
-        alert('Error fetching reservations: ' + errorText);
       }
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Error fetching reservations:', error);
-      alert('Error fetching reservations: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsRefreshing(false);
       setLoading(false);
@@ -77,23 +59,16 @@ export default function ActiveReservations() {
     const now = new Date().getTime();
     const expires = new Date(expiresAt).getTime();
     const diff = expires - now;
-
     if (diff <= 0) return 'EXPIRED';
-
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
     return `${hours}h ${minutes}m`;
   };
 
   const handleCheckIn = async (reservationId: string, bedId: number) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/beds/${bedId}/checkin?reservation_id=${reservationId}`, {
-        method: 'POST',
-      });
-      
+      const response = await fetch(`${config.apiUrl}/api/beds/${bedId}/checkin?reservation_id=${reservationId}`, { method: 'POST' });
       if (response.ok) {
-        // Refresh list to remove the checked-in reservation
         fetchReservations();
       } else {
         const err = await response.json();
@@ -101,192 +76,198 @@ export default function ActiveReservations() {
       }
     } catch (error) {
       console.error('Error checking in:', error);
-      alert('Error connecting to server');
+      alert('Check-in failed');
     }
   };
 
-  const handleCancel = async (reservationId: string) => {
-    if (!confirm('Are you sure you want to cancel this reservation?')) return;
-    
+  const handleCancelReservation = async (reservationId: string) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/reservations/${reservationId}/cancel`, {
-        method: 'POST',
-      });
-
+      const response = await fetch(`${config.apiUrl}/api/reservations/${reservationId}`, { method: 'DELETE' });
       if (response.ok) {
         fetchReservations();
+        setSelectedReservation(null);
       } else {
         alert('Failed to cancel reservation');
       }
     } catch (error) {
-      console.error('Error cancelling:', error);
-      alert('Error connecting to server');
+      console.error('Error canceling reservation:', error);
+      alert('Failed to cancel reservation');
     }
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-2xl text-purple-300">Loading reservations...</div>
-      </div>
-    );
-  }
-
-  if (reservations.length === 0) {
-    return (
-      <div className="text-center py-12 md:py-20">
-        <div className="w-24 h-24 md:w-32 md:h-32 mx-auto bg-gradient-to-br from-[#b8272f]/20 to-[#8b1f25]/10 rounded-2xl flex items-center justify-center mb-4 md:mb-6 border border-[#b8272f]/30">
-          <AlertCircle className="w-12 h-12 md:w-16 md:h-16 text-[#b8272f]" />
-        </div>
-        <h3 className="text-2xl md:text-3xl font-bold text-white mb-2 md:mb-3">No Active Reservations</h3>
-        <p className="text-base md:text-xl text-slate-400 mb-4 md:mb-6">All reservations have been processed or expired.</p>
-        <button
-          onClick={fetchReservations}
-          className="py-2.5 px-6 md:py-3 md:px-8 bg-gradient-to-r from-[#b8272f] to-[#8b1f25] hover:from-[#c02f37] hover:to-[#9a2329] rounded-lg text-white text-base font-semibold transition-all duration-300 shadow-lg border border-[#b8272f]/30 inline-flex items-center gap-2"
-        >
-          <RefreshCw className="w-4 h-4" /> Refresh Data
-        </button>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-600"></div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-4 md:mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 md:gap-3 mb-2 flex-wrap">
-            <h2 className="text-xl md:text-2xl font-bold text-white">
-              Active Reservations
-            </h2>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 bg-[#1a2332]/80 px-2.5 py-1 rounded-lg border border-[#4a5568]/30">
-              {isRefreshing ? (
-                <>
-                  <Activity className="w-3 h-3 animate-pulse text-emerald-400" />
-                  <span>Updating...</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
-                  <span className="hidden sm:inline">Live •</span>
-                  <span>{lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                </>
-              )}
-            </div>
-          </div>
-          <p className="text-slate-400 text-sm">
-            <span className="text-[#d4a017] font-bold">{reservations.length}</span> pending check-in{reservations.length !== 1 ? 's' : ''}
+    <div className="space-y-6">
+      {/* Header with Stats */}
+      <div className="sm:flex sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Active Reservations</h2>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Manage bed reservations and check-ins
           </p>
         </div>
-        <button
-          onClick={fetchReservations}
-          disabled={isRefreshing}
-          className="py-2.5 px-4 md:px-6 bg-gradient-to-r from-[#b8272f] to-[#8b1f25] hover:from-[#c02f37] hover:to-[#9a2329] rounded-lg text-white text-sm md:text-base font-semibold transition-all duration-300 shadow-lg border border-[#b8272f]/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline">{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-        </button>
+        <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex items-center gap-4">
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            {isRefreshing && <Activity className="w-3 h-3 animate-spin" />}
+            <span>Updated: {lastUpdated.toLocaleTimeString()}</span>
+          </div>
+        </div>
       </div>
 
-      <div className="space-y-3 md:space-y-4">
-        {reservations.map((reservation) => {
-          const timeRemaining = reservation.expires_at ? getTimeRemaining(reservation.expires_at) : 'N/A';
-          const isExpiringSoon = reservation.expires_at && 
-            new Date(reservation.expires_at).getTime() - new Date().getTime() < 60 * 60 * 1000; // Less than 1 hour
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+        <div className="overflow-hidden rounded-lg bg-white dark:bg-gray-800 px-4 py-5 shadow sm:p-6">
+          <dt className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">Total Reservations</dt>
+          <dd className="mt-1 text-3xl font-semibold tracking-tight text-gray-900 dark:text-white">{reservations.length}</dd>
+        </div>
+        <div className="overflow-hidden rounded-lg bg-white dark:bg-gray-800 px-4 py-5 shadow sm:p-6">
+          <dt className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">Expiring Soon</dt>
+          <dd className="mt-1 text-3xl font-semibold tracking-tight text-yellow-600">
+            {reservations.filter(r => r.expires_at && getTimeRemaining(r.expires_at) !== 'EXPIRED' && new Date(r.expires_at).getTime() - new Date().getTime() < 30 * 60 * 1000).length}
+          </dd>
+        </div>
+        <div className="overflow-hidden rounded-lg bg-white dark:bg-gray-800 px-4 py-5 shadow sm:p-6">
+          <dt className="truncate text-sm font-medium text-gray-500 dark:text-gray-400">Ready for Check-in</dt>
+          <dd className="mt-1 text-3xl font-semibold tracking-tight text-green-600">{reservations.filter(r => r.status === 'active').length}</dd>
+        </div>
+      </div>
 
-          return (
-            <div
-              key={reservation.reservation_id}
-              className={`glass rounded-xl p-4 md:p-5 border-l-4 hover:scale-[1.005] transition-transform ${
-                isExpiringSoon ? 'border-[#b8272f]' : 'border-emerald-500'
-              }`}
-            >
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-5">
-                {/* Guest Info */}
-                <div className="lg:col-span-2">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 md:w-12 md:h-12 bg-gradient-to-br from-[#d4a017] to-[#b8272f] rounded-lg flex items-center justify-center">
-                        <User className="w-5 h-5 md:w-6 md:h-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg md:text-xl font-bold text-white mb-1">
-                          {reservation.caller_name}
-                        </h3>
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3 text-slate-300 text-xs md:text-sm">
-                          <span className="flex items-center gap-1.5">
-                            <BedDouble className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                            Bed <span className="font-bold text-[#d4a017]">#{reservation.bed_id}</span>
-                          </span>
-                          <span className="hidden sm:inline text-slate-600">•</span>
-                          <span className="font-mono font-bold text-[#d4a017]">{reservation.reservation_id}</span>
+      {/* Reservations List */}
+      {reservations.length === 0 ? (
+        <div className="text-center rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 p-12">
+          <BedDouble className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">No reservations</h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">All beds are either available or occupied.</p>
+        </div>
+      ) : (
+        <div className="overflow-hidden bg-white dark:bg-gray-800 shadow sm:rounded-lg">
+          <ul role="list" className="divide-y divide-gray-200 dark:divide-gray-700">
+            {reservations.map((reservation) => {
+              const timeRemaining = reservation.expires_at ? getTimeRemaining(reservation.expires_at) : null;
+              const isExpiringSoon = timeRemaining && timeRemaining !== 'EXPIRED' && reservation.expires_at && 
+                new Date(reservation.expires_at).getTime() - new Date().getTime() < 30 * 60 * 1000;
+              const isExpired = timeRemaining === 'EXPIRED';
+
+              return (
+                <li key={reservation.reservation_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  <div className="px-4 py-4 sm:px-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4 flex-1">
+                        <div className={`flex-shrink-0 rounded-full p-3 ${
+                          isExpired ? 'bg-red-100 dark:bg-red-400/10' :
+                          isExpiringSoon ? 'bg-yellow-100 dark:bg-yellow-400/10' :
+                          'bg-green-100 dark:bg-green-400/10'
+                        }`}>
+                          <BedDouble className={`h-6 w-6 ${
+                            isExpired ? 'text-red-600 dark:text-red-400' :
+                            isExpiringSoon ? 'text-yellow-600 dark:text-yellow-400' :
+                            'text-green-600 dark:text-green-400'
+                          }`} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-3">
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {reservation.caller_name}
+                            </p>
+                            <span className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-400/10 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-400 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-400/20">
+                              Bed #{reservation.bed_id}
+                            </span>
+                            {timeRemaining && (
+                              <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
+                                isExpired ? 'bg-red-50 dark:bg-red-400/10 text-red-700 dark:text-red-400 ring-red-600/10 dark:ring-red-400/20' :
+                                isExpiringSoon ? 'bg-yellow-50 dark:bg-yellow-400/10 text-yellow-800 dark:text-yellow-400 ring-yellow-600/20 dark:ring-yellow-400/20' :
+                                'bg-green-50 dark:bg-green-400/10 text-green-700 dark:text-green-400 ring-green-600/20 dark:ring-green-400/20'
+                              }`}>
+                                <Clock className="mr-1 h-3 w-3" />
+                                {timeRemaining}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-2 flex flex-col gap-1">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              <span className="font-medium">Situation:</span> {reservation.situation}
+                            </p>
+                            {reservation.needs && (
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
+                                <span className="font-medium">Needs:</span> {reservation.needs}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                              Reserved: {new Date(reservation.created_at).toLocaleString()}
+                            </p>
+                          </div>
                         </div>
                       </div>
+                      <div className="ml-4 flex flex-shrink-0 gap-2">
+                        <button
+                          onClick={() => handleCheckIn(reservation.reservation_id, reservation.bed_id)}
+                          className="inline-flex items-center gap-x-1.5 rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
+                        >
+                          <CheckCircle className="-ml-0.5 h-4 w-4" />
+                          Check In
+                        </button>
+                        <button
+                          onClick={() => setSelectedReservation(reservation)}
+                          className="inline-flex items-center gap-x-1.5 rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-gray-300 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600"
+                        >
+                          <XCircle className="-ml-0.5 h-4 w-4" />
+                          Cancel
+                        </button>
+                      </div>
                     </div>
                   </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
-                  <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold mb-4 border ${
-                    isExpiringSoon 
-                      ? 'bg-[#b8272f]/20 text-[#ff6b6b] border-[#b8272f]/40' 
-                      : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
-                  }`}>
-                    <Clock className="w-4 h-4" />
-                    {timeRemaining} remaining
-                  </div>
-
-                  <div className="bg-[#0a0f1a]/40 rounded-lg p-3 md:p-4 space-y-2.5 border border-[#4a5568]/20">
-                    <div>
-                      <span className="text-slate-400 text-xs font-semibold uppercase tracking-wide block mb-1">Situation</span>
-                      <p className="text-white text-sm md:text-base">{reservation.situation}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 text-xs font-semibold uppercase tracking-wide block mb-1">Needs</span>
-                      <p className="text-white text-sm md:text-base">{reservation.needs}</p>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 text-xs font-semibold uppercase tracking-wide block mb-1">Reserved At</span>
-                      <p className="text-white text-sm font-mono">
-                        {new Date(reservation.created_at).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </p>
-                    </div>
-                  </div>
+      {/* Cancel Confirmation Modal */}
+      {selectedReservation && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+            <div className="fixed inset-0 bg-gray-500/75 dark:bg-gray-900/75 transition-opacity" onClick={() => setSelectedReservation(null)}></div>
+            <div className="relative transform overflow-hidden rounded-lg bg-white dark:bg-gray-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+              <div className="sm:flex sm:items-start">
+                <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-400/10 sm:mx-0 sm:h-10 sm:w-10">
+                  <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
                 </div>
-
-                {/* Actions */}
-                <div className="flex flex-col gap-2 md:gap-2.5 justify-center">
-                  <button
-                    onClick={() => handleCheckIn(reservation.reservation_id, reservation.bed_id)}
-                    className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-lg text-white text-sm md:text-base font-semibold transition-all duration-300 shadow-lg hover:shadow-emerald-900/50 hover:scale-[1.02] border border-emerald-400/30"
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      <CheckCircle className="w-4 h-4" /> Check In Guest
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => handleCancel(reservation.reservation_id)}
-                    className="w-full py-3 px-4 bg-gradient-to-r from-[#b8272f] to-[#8b1f25] hover:from-[#c02f37] hover:to-[#9a2329] rounded-lg text-white text-sm md:text-base font-semibold transition-all duration-300 shadow-lg hover:shadow-red-900/50 hover:scale-[1.02] border border-[#b8272f]/30"
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      <XCircle className="w-4 h-4" /> Cancel
-                    </span>
-                  </button>
-                  <button
-                    className="w-full py-2.5 px-4 bg-[#2d3748]/60 hover:bg-[#4a5568]/60 rounded-lg text-slate-300 text-xs md:text-sm font-semibold transition-all duration-300 border border-[#4a5568]/40"
-                  >
-                    <span className="flex items-center justify-center gap-2">
-                      <Phone className="w-3.5 h-3.5" /> Contact
-                    </span>
-                  </button>
+                <div className="mt-3 text-center sm:ml-4 sm:mt-0 sm:text-left">
+                  <h3 className="text-base font-semibold leading-6 text-gray-900 dark:text-white">Cancel Reservation</h3>
+                  <div className="mt-2">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Are you sure you want to cancel the reservation for <span className="font-semibold">{selectedReservation.caller_name}</span> (Bed #{selectedReservation.bed_id})?
+                      This action cannot be undone and the bed will become available.
+                    </p>
+                  </div>
                 </div>
               </div>
+              <div className="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse gap-3">
+                <button
+                  onClick={() => handleCancelReservation(selectedReservation.reservation_id)}
+                  className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:w-auto"
+                >
+                  Cancel Reservation
+                </button>
+                <button
+                  onClick={() => setSelectedReservation(null)}
+                  className="mt-3 inline-flex w-full justify-center rounded-md bg-white dark:bg-gray-700 px-3 py-2 text-sm font-semibold text-gray-900 dark:text-gray-300 shadow-sm ring-1 ring-inset ring-gray-300 dark:ring-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 sm:mt-0 sm:w-auto"
+                >
+                  Keep Reservation
+                </button>
+              </div>
             </div>
-          );
-        })}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

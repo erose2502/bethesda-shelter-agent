@@ -29,9 +29,9 @@ class BedService:
         
         # Count them in Python to avoid Database Group-By bugs
         # Note: b.status is a Pydantic BedStatus (str), not SQLAlchemy BedStatus (enum)
-        available = sum(1 for b in beds if b.status.value == "available")
-        held = sum(1 for b in beds if b.status.value == "held")
-        occupied = sum(1 for b in beds if b.status.value == "occupied")
+        available = sum(1 for b in beds if b.status.value == "AVAILABLE")
+        held = sum(1 for b in beds if b.status.value == "HELD")
+        occupied = sum(1 for b in beds if b.status.value == "OCCUPIED")
         
         return BedSummary(
             available=available,

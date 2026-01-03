@@ -4,12 +4,19 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from pydantic import BaseModel
 
 from src.db.database import get_db
 from src.services.bed_service import BedService
 from src.models.schemas import BedStatus, BedSummary, BedDetail
+from src.models.db_models import Guest, Bed, BedStatus as BedStatusEnum
 
 router = APIRouter()
+
+
+class AssignGuestRequest(BaseModel):
+    guest_id: int
 
 
 @router.get("/", response_model=BedSummary)
@@ -105,6 +112,54 @@ async def checkout_bed(bed_id: int, db: AsyncSession = Depends(get_db)) -> dict:
         return {"status": "available", "bed_id": bed_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{bed_id}/assign")
+async def assign_guest_to_bed(
+    bed_id: int,
+    request: AssignGuestRequest,
+    db: AsyncSession = Depends(get_db)
+) -> dict:
+    """
+    Assign a guest to a specific bed.
+    If the guest is already assigned to another bed, they will be moved.
+    """
+    if bed_id < 1 or bed_id > 108:
+        raise HTTPException(status_code=404, detail="Bed not found")
+    
+    # Get the guest
+    result = await db.execute(select(Guest).where(Guest.id == request.guest_id))
+    guest = result.scalar_one_or_none()
+    
+    if not guest:
+        raise HTTPException(status_code=404, detail="Guest not found")
+    
+    # Get the target bed
+    result = await db.execute(select(Bed).where(Bed.bed_id == bed_id))
+    target_bed = result.scalar_one_or_none()
+    
+    if not target_bed:
+        raise HTTPException(status_code=404, detail="Bed not found")
+    
+    # If guest already has a bed, free up the old bed
+    if guest.bed_id and guest.bed_id != bed_id:
+        old_bed_result = await db.execute(select(Bed).where(Bed.bed_id == guest.bed_id))
+        old_bed = old_bed_result.scalar_one_or_none()
+        if old_bed:
+            old_bed.status = BedStatusEnum.AVAILABLE
+    
+    # Assign guest to new bed
+    guest.bed_id = bed_id
+    target_bed.status = BedStatusEnum.OCCUPIED
+    
+    await db.commit()
+    
+    return {
+        "status": "success",
+        "bed_id": bed_id,
+        "guest_id": request.guest_id,
+        "message": f"Assigned {guest.first_name} {guest.last_name} to bed {bed_id}"
+    }
 
 
 @router.post("/simulate")
