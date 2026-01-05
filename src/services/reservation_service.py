@@ -31,6 +31,7 @@ class ReservationService:
         caller_name: Optional[str] = None,
         situation: Optional[str] = None,
         needs: Optional[str] = None,
+        preferred_language: Optional[str] = None,
     ) -> ReservationResponse:
         """Create a new reservation and log the details."""
         # 1. Check existing
@@ -64,6 +65,7 @@ class ReservationService:
                 situation=situation,
                 needs=needs,
                 confirmation_code=confirmation_code,  # FIX: Save confirmation code
+                preferred_language=preferred_language or "English",  # Save detected language
                 bed_id=bed_id,
                 created_at=now,
                 expires_at=expires_at,

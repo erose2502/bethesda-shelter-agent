@@ -9,20 +9,30 @@ from src.config import get_settings
 from src.models.schemas import IntentClassification, Intent
 
 
-INTENT_SYSTEM_PROMPT = """You are an intent classifier for a homeless shelter's voice assistant.
+INTENT_SYSTEM_PROMPT = """You are an intent classifier for a homeless shelter's voice assistant that supports MULTIPLE LANGUAGES (English, Spanish, Portuguese, French, etc.).
 
 Your job is to classify caller intent into one of these categories:
-- bed_inquiry: Asking about bed availability, capacity, how many beds
-- make_reservation: Wanting to reserve/book a bed
+- bed_inquiry: Asking about bed availability, capacity, how many beds (in any language: "bed", "cama", "leito", "lit")
+- make_reservation: Wanting to reserve/book a bed (in any language: "reserve", "reservar", "réserver")
 - check_reservation: Checking status of existing reservation
 - shelter_rules: Questions about rules, curfew, sobriety requirements, what to bring
-- directions: Asking for location, address, how to get there
-- crisis: Signs of immediate distress, danger, self-harm, or mental health crisis
+- directions: Asking for location, address, how to get there (in any language: "where", "dónde", "onde", "où")
+- crisis: Signs of ACTUAL SEVERE crisis - ONLY classify as crisis if there is EXPLICIT mention of suicide, self-harm, wanting to die, or immediate danger to self or others
 - transfer_staff: Explicit request to talk to a person/staff
 - other: Anything else
 
-CRITICAL: If you detect ANY signs of crisis (suicidal thoughts, immediate danger, severe distress), 
-classify as "crisis" regardless of what they're asking about.
+CRITICAL CRISIS DETECTION RULES:
+1. ONLY classify as "crisis" if the caller EXPLICITLY mentions:
+   - Suicide/suicidal thoughts (English: "suicide", "kill myself" | Spanish: "suicidio", "matarme", "quitarme la vida" | Portuguese: "suicídio", "me matar" | French: "suicide", "me tuer")
+   - Self-harm or wanting to die (English: "hurt myself", "want to die", "end my life" | Spanish: "lastimarme", "quiero morir", "terminar mi vida" | Portuguese: "me machucar", "quero morrer" | French: "me blesser", "veux mourir")
+   - Immediate danger to themselves or others
+2. DO NOT classify as crisis just because someone is:
+   - Homeless or in a difficult situation
+   - Asking for help or a bed urgently
+   - Frustrated or upset about their circumstances
+   - Using words that sound like crisis words in another language
+3. When in doubt, prefer "bed_inquiry" or "other" over "crisis"
+4. Being homeless and needing shelter is NOT a crisis classification - only actual suicidal ideation or self-harm
 
 Respond with JSON only:
 {
@@ -117,36 +127,55 @@ class IntentClassifier:
 
 # Quick classification without full service (for testing/fallback)
 async def quick_classify(transcript: str) -> Intent:
-    """Quick intent classification using keywords (fallback)."""
+    """Quick intent classification using keywords (fallback) - MULTILINGUAL."""
     transcript_lower = transcript.lower()
     
-    # Crisis keywords - HIGHEST PRIORITY
-    crisis_words = ["kill", "suicide", "hurt myself", "end it", "can't go on", "emergency"]
+    # Crisis keywords - HIGHEST PRIORITY - VERY STRICT
+    # Only trigger on explicit self-harm/suicide mentions, not general distress
+    crisis_words = [
+        "kill myself", "suicide", "suicidio", "suicídio", "hurt myself", 
+        "end my life", "want to die", "quiero morir", "quero morrer",
+        "matarme", "quitarme la vida", "me matar", "me tuer"
+    ]
     if any(word in transcript_lower for word in crisis_words):
         return Intent.CRISIS
     
-    # Bed inquiry keywords
-    bed_words = ["bed", "available", "space", "room", "stay", "sleep", "capacity"]
+    # Bed inquiry keywords (multilingual)
+    bed_words = [
+        "bed", "beds", "available", "cama", "camas", "disponible", 
+        "leito", "lit", "disponível", "space", "room", "stay", "sleep"
+    ]
     if any(word in transcript_lower for word in bed_words):
         return Intent.BED_INQUIRY
     
-    # Reservation keywords
-    reserve_words = ["reserve", "book", "hold", "save"]
+    # Reservation keywords (multilingual)
+    reserve_words = [
+        "reserve", "reservar", "réserver", "book", "hold", "save"
+    ]
     if any(word in transcript_lower for word in reserve_words):
         return Intent.MAKE_RESERVATION
     
-    # Rules keywords
-    rules_words = ["rule", "curfew", "sober", "alcohol", "drug", "allowed", "bring"]
+    # Rules keywords (multilingual)
+    rules_words = [
+        "rule", "regla", "règle", "curfew", "toque de queda", 
+        "sober", "sobrio", "sóbrio", "alcohol", "drug", "droga"
+    ]
     if any(word in transcript_lower for word in rules_words):
         return Intent.SHELTER_RULES
     
-    # Directions keywords
-    direction_words = ["where", "address", "location", "directions", "get there", "far"]
+    # Directions keywords (multilingual)
+    direction_words = [
+        "where", "dónde", "onde", "où", "address", "dirección", 
+        "endereço", "adresse", "location", "ubicación", "localização"
+    ]
     if any(word in transcript_lower for word in direction_words):
         return Intent.DIRECTIONS
     
-    # Transfer keywords
-    transfer_words = ["person", "human", "staff", "someone", "talk to"]
+    # Transfer keywords (multilingual)
+    transfer_words = [
+        "person", "persona", "pessoa", "personne", "human", "staff", 
+        "personal", "someone", "talk to", "hablar con", "falar com"
+    ]
     if any(word in transcript_lower for word in transfer_words):
         return Intent.TRANSFER_STAFF
     

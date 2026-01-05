@@ -75,6 +75,7 @@ class ReservationCreate(BaseModel):
     caller_name: Optional[str] = Field(None, max_length=100)
     situation: Optional[str] = Field(None, max_length=500)
     needs: Optional[str] = Field(None, max_length=500)
+    preferred_language: Optional[str] = Field(None, max_length=32, description="Language detected during call (e.g., English, Spanish, Portuguese)")
 
 class ReservationResponse(BaseModel):
     reservation_id: str
@@ -196,6 +197,7 @@ class GuestCreate(BaseModel):
     photo_url: Optional[str] = None  # Base64 or URL
     date_of_birth: Optional[str] = Field(None, max_length=10)  # YYYY-MM-DD
     phone: Optional[str] = Field(None, max_length=20)
+    preferred_language: Optional[str] = Field(None, max_length=32, description="Guest's preferred language (e.g., English, Spanish, Portuguese)")
     
     # Program info
     programs: Optional[List[str]] = None
@@ -231,6 +233,7 @@ class GuestUpdate(BaseModel):
     photo_url: Optional[str] = None
     date_of_birth: Optional[str] = Field(None, max_length=10)
     phone: Optional[str] = Field(None, max_length=20)
+    preferred_language: Optional[str] = Field(None, max_length=32, description="Guest's preferred language")
     
     # Status
     status: Optional[GuestStatus] = None
@@ -278,6 +281,7 @@ class GuestResponse(BaseModel):
     photo_url: Optional[str] = None
     date_of_birth: Optional[str] = None
     phone: Optional[str] = None
+    preferred_language: Optional[str] = None
     
     # Stay info
     check_in_date: datetime

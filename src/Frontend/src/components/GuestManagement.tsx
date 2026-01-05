@@ -12,6 +12,7 @@ interface Guest {
   last_name: string;
   photo_url: string | null;
   phone: string | null;
+  preferred_language: string | null;
   check_in_date: string;
   expected_discharge_date: string | null;
   days_in_shelter: number;
@@ -61,6 +62,7 @@ export default function GuestManagement() {
     last_name: '',
     photo_url: '',
     phone: '',
+    preferred_language: 'English',
     expected_discharge_date: '',
     employment_status: 'seeking' as Guest['employment_status'],
     employer: '',
@@ -170,6 +172,7 @@ export default function GuestManagement() {
       last_name: '',
       photo_url: '',
       phone: '',
+      preferred_language: 'English',
       expected_discharge_date: '',
       employment_status: 'seeking',
       employer: '',
@@ -189,6 +192,7 @@ export default function GuestManagement() {
       last_name: guest.last_name,
       photo_url: guest.photo_url || '',
       phone: guest.phone || '',
+      preferred_language: guest.preferred_language || 'English',
       expected_discharge_date: guest.expected_discharge_date || '',
       employment_status: guest.employment_status,
       employer: guest.employer || '',
@@ -450,6 +454,23 @@ export default function GuestManagement() {
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-white mb-2">Preferred Language</label>
+                    <select
+                      value={formData.preferred_language}
+                      onChange={e => setFormData(prev => ({ ...prev, preferred_language: e.target.value }))}
+                      className="block w-full rounded-lg border-0 px-4 py-3 text-white bg-white/10 backdrop-blur-md ring-1 ring-inset ring-white/20 focus:ring-2 focus:ring-inset focus:ring-red-400 sm:text-sm sm:leading-6"
+                    >
+                      <option value="English">English</option>
+                      <option value="Spanish">Spanish (Español)</option>
+                      <option value="Portuguese">Portuguese (Português)</option>
+                      <option value="French">French (Français)</option>
+                      <option value="Haitian Creole">Haitian Creole (Kreyòl)</option>
+                      <option value="Arabic">Arabic (العربية)</option>
+                      <option value="Chinese">Chinese (中文)</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-white mb-2">Expected Discharge Date</label>
                     <input
                       type="date"
@@ -625,6 +646,13 @@ export default function GuestManagement() {
                         <div className="flex items-center gap-1">
                           <Phone className="h-3 w-3" />
                           <span>{guest.phone}</span>
+                        </div>
+                      )}
+                      {guest.preferred_language && guest.preferred_language !== 'English' && (
+                        <div className="flex items-center gap-1">
+                          <span className="inline-flex items-center rounded-md bg-purple-500/20 backdrop-blur-md px-2 py-0.5 text-xs font-medium text-purple-300">
+                            🌍 {guest.preferred_language}
+                          </span>
                         </div>
                       )}
                       <div className="flex items-center gap-1">

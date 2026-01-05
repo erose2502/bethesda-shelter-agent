@@ -87,8 +87,60 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
+    # Run migrations
+    await run_migrations()
+    
     # Initialize 108 beds if they don't exist
     await init_beds()
+
+
+async def run_migrations() -> None:
+    """
+    Run any necessary database migrations.
+    
+    This handles schema updates for existing databases.
+    """
+    engine = get_engine()
+    settings = get_settings()
+    
+    # Only run migrations for SQLite (PostgreSQL should use Alembic)
+    if "sqlite" not in settings.get_database_url:
+        return
+    
+    async with engine.begin() as conn:
+        # Migration: Add preferred_language column to guests and reservations
+        await conn.run_sync(_add_language_columns)
+
+
+def _add_language_columns(conn) -> None:
+    """Add preferred_language columns if they don't exist (SQLite)."""
+    import sqlite3
+    
+    # Check and add to guests table
+    cursor = conn.connection.execute("PRAGMA table_info(guests)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    if "preferred_language" not in columns:
+        try:
+            conn.connection.execute(
+                "ALTER TABLE guests ADD COLUMN preferred_language VARCHAR(32) DEFAULT 'English'"
+            )
+            print("✅ Added preferred_language column to guests table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+    
+    # Check and add to reservations table
+    cursor = conn.connection.execute("PRAGMA table_info(reservations)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    if "preferred_language" not in columns:
+        try:
+            conn.connection.execute(
+                "ALTER TABLE reservations ADD COLUMN preferred_language VARCHAR(32) DEFAULT 'English'"
+            )
+            print("✅ Added preferred_language column to reservations table")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
 
 
 async def init_beds() -> None:

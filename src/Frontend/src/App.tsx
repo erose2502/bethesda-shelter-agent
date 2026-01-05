@@ -39,12 +39,11 @@ function App() {
 
   // Mock supervisor data - in real app this would come from auth
   const supervisor = {
-    name: 'Sarah Johnson',
+    name: 'Elijah Rogito',
     role: 'Supervisor',
-    avatar: null, // Could be a URL to an image
-    initials: 'SJ',
+    avatar: 'https://ui-avatars.com/api/?name=Elijah+Rogito&background=ef4444&color=fff&bold=true&size=128', // Profile picture
+    initials: 'ER',
   };
-
   // Save dark mode preference
   useEffect(() => {
     localStorage.setItem('darkMode', JSON.stringify(darkMode));

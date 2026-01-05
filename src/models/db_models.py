@@ -110,6 +110,7 @@ class Reservation(Base):
     situation = Column(Text, nullable=True)
     needs = Column(Text, nullable=True)
     confirmation_code = Column(String(16), nullable=True)
+    preferred_language = Column(String(32), nullable=True, default="English")  # Language detected during call
     
     created_at = Column(DateTime, server_default=func.now())
     expires_at = Column(DateTime, nullable=False)
@@ -267,6 +268,7 @@ class Guest(Base):
     photo_url = Column(Text, nullable=True)  # Base64 encoded or URL
     date_of_birth = Column(String(10), nullable=True)  # YYYY-MM-DD
     phone = Column(String(20), nullable=True)
+    preferred_language = Column(String(32), nullable=True, default="English")  # "English", "Spanish", "Portuguese", etc.
     
     # Check-in/Stay Information
     check_in_date = Column(DateTime, server_default=func.now())

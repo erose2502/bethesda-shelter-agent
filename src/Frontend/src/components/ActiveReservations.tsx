@@ -8,6 +8,7 @@ interface Reservation {
   caller_name: string;
   situation: string;
   needs: string;
+  preferred_language?: string;
   created_at: string;
   expires_at?: string;
   status: string;
@@ -82,12 +83,13 @@ export default function ActiveReservations() {
 
   const handleCancelReservation = async (reservationId: string) => {
     try {
-      const response = await fetch(`${config.apiUrl}/api/reservations/${reservationId}`, { method: 'DELETE' });
+      const response = await fetch(`${config.apiUrl}/api/reservations/${reservationId}/cancel`, { method: 'POST' });
       if (response.ok) {
         fetchReservations();
         setSelectedReservation(null);
       } else {
-        alert('Failed to cancel reservation');
+        const err = await response.json().catch(() => ({ detail: 'Unknown error' }));
+        alert(`Failed to cancel reservation: ${err.detail}`);
       }
     } catch (error) {
       console.error('Error canceling reservation:', error);
@@ -179,6 +181,11 @@ export default function ActiveReservations() {
                             <span className="inline-flex items-center rounded-md bg-blue-50 dark:bg-blue-400/10 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-400 ring-1 ring-inset ring-blue-700/10 dark:ring-blue-400/20">
                               Bed #{reservation.bed_id}
                             </span>
+                            {reservation.preferred_language && reservation.preferred_language !== 'English' && (
+                              <span className="inline-flex items-center rounded-md bg-purple-50 dark:bg-purple-400/10 px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-400 ring-1 ring-inset ring-purple-700/10 dark:ring-purple-400/20">
+                                🌍 {reservation.preferred_language}
+                              </span>
+                            )}
                             {timeRemaining && (
                               <span className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium ring-1 ring-inset ${
                                 isExpired ? 'bg-red-50 dark:bg-red-400/10 text-red-700 dark:text-red-400 ring-red-600/10 dark:ring-red-400/20' :

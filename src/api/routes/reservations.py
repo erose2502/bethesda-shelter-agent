@@ -24,6 +24,7 @@ async def create_reservation(
             caller_name=reservation.caller_name,
             situation=reservation.situation,
             needs=reservation.needs,
+            preferred_language=reservation.preferred_language,
         )
         # No manual commit - get_db() dependency handles it
         return result
