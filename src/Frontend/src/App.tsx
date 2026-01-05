@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
-import { Home, BedDouble, ClipboardList, Church, Users, Menu, X, BarChart3, Sun, Moon, ChevronDown, Bell } from 'lucide-react';
+import { Home, BedDouble, ClipboardList, Church, Users, Menu, X, BarChart3, Sun, Moon, ChevronDown, Bell, MessageCircle, CheckSquare, Shield, LogOut } from 'lucide-react';
 import BedMap from './components/BedMap';
 import ActiveReservations from './components/ActiveReservations';
 import ChapelSchedule from './components/ChapelSchedule';
 import VolunteerManagement from './components/VolunteerManagement';
 import GuestManagement from './components/GuestManagement';
+import UserManagement from './components/UserManagement';
+import TaskManagement from './components/TaskManagement';
+import LoginPage from './components/LoginPage';
+import Chat from './components/Chat';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 import config from './config';
 import './App.css';
 
-type TabType = 'dashboard' | 'beds' | 'reservations' | 'chapel' | 'volunteers' | 'guests';
+type TabType = 'dashboard' | 'beds' | 'reservations' | 'chapel' | 'volunteers' | 'guests' | 'users' | 'tasks';
 
 interface Supervisor {
   name: string;
@@ -36,17 +41,21 @@ interface ToastNotification {
 }
 
 const navigation = [
-  { name: 'Dashboard', value: 'dashboard' as TabType, icon: BarChart3 },
-  { name: 'Bed Map', value: 'beds' as TabType, icon: BedDouble },
-  { name: 'Reservations', value: 'reservations' as TabType, icon: ClipboardList },
-  { name: 'Chapel Services', value: 'chapel' as TabType, icon: Church },
-  { name: 'Volunteers', value: 'volunteers' as TabType, icon: Users },
-  { name: 'Guests', value: 'guests' as TabType, icon: Users },
+  { name: 'Dashboard', value: 'dashboard' as TabType, icon: BarChart3, roles: ['director', 'life_coach', 'supervisor'] },
+  { name: 'Bed Map', value: 'beds' as TabType, icon: BedDouble, roles: ['director', 'life_coach'] },
+  { name: 'Reservations', value: 'reservations' as TabType, icon: ClipboardList, roles: ['director', 'supervisor'] },
+  { name: 'Chapel Services', value: 'chapel' as TabType, icon: Church, roles: ['director', 'supervisor'] },
+  { name: 'Volunteers', value: 'volunteers' as TabType, icon: Users, roles: ['director', 'supervisor'] },
+  { name: 'Guests', value: 'guests' as TabType, icon: Users, roles: ['director', 'life_coach'] },
+  { name: 'Tasks', value: 'tasks' as TabType, icon: CheckSquare, roles: ['director', 'life_coach', 'supervisor'] },
+  { name: 'Users', value: 'users' as TabType, icon: Shield, roles: ['director'] },
 ];
 
-function App() {
+function AppContent() {
+  const { user, logout, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showChat, setShowChat] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('darkMode');
     return saved ? JSON.parse(saved) : false;
@@ -206,7 +215,7 @@ function App() {
                 <ul role="list" className="flex flex-1 flex-col gap-y-7">
                   <li>
                     <ul role="list" className="-mx-2 space-y-1">
-                      {navigation.map((item) => (
+                      {navigation.filter(item => user && item.roles.includes(user.role)).map((item) => (
                         <li key={item.name}>
                           <button
                             onClick={() => {
@@ -244,7 +253,7 @@ function App() {
             <ul role="list" className="flex flex-1 flex-col gap-y-7">
               <li>
                 <ul role="list" className="-mx-2 space-y-1">
-                  {navigation.map((item) => (
+                  {navigation.filter(item => user && item.roles.includes(user.role)).map((item) => (
                     <li key={item.name}>
                       <button
                         onClick={() => setActiveTab(item.value)}
@@ -368,6 +377,14 @@ function App() {
                 )}
               </div>
 
+              {/* Chat Toggle */}
+              <button
+                onClick={() => setShowChat(!showChat)}
+                className="relative rounded-full p-2 bg-white/10 hover:bg-white/20 backdrop-blur-md text-white transition-all"
+              >
+                <MessageCircle className="h-5 w-5" />
+              </button>
+
               <div className="hidden lg:block lg:h-6 lg:w-px bg-white/20" aria-hidden="true"></div>
 
               {/* Profile dropdown */}
@@ -377,16 +394,14 @@ function App() {
                   className="flex items-center gap-x-3 rounded-full p-1.5 hover:bg-white/10 backdrop-blur-md transition-all"
                 >
                   <span className="sr-only">Open user menu</span>
-                  {supervisor.avatar ? (
-                    <img className="h-8 w-8 rounded-full ring-2 ring-white/30" src={supervisor.avatar} alt="" />
-                  ) : (
-                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-pink-500 ring-2 ring-white/30">
-                      <span className="text-sm font-medium leading-none text-white">{supervisor.initials}</span>
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-red-500 to-pink-500 ring-2 ring-white/30">
+                    <span className="text-sm font-medium leading-none text-white">
+                      {user ? `${user.first_name[0]}${user.last_name[0]}`.toUpperCase() : 'U'}
                     </span>
-                  )}
+                  </span>
                   <span className="hidden lg:flex lg:items-center text-white">
                     <span className="text-sm font-semibold leading-6" aria-hidden="true">
-                      {supervisor.name}
+                      {user ? `${user.first_name} ${user.last_name}` : 'User'}
                     </span>
                     <ChevronDown className="ml-2 h-5 w-5 text-white/60" aria-hidden="true" />
                   </span>
@@ -398,8 +413,8 @@ function App() {
                     <div className="fixed inset-0 z-10" onClick={() => setProfileMenuOpen(false)}></div>
                     <div className="absolute right-0 z-20 mt-2.5 w-48 origin-top-right rounded-xl py-2 shadow-lg ring-1 ring-white/10 focus:outline-none bg-white/10 dark:bg-gray-900/50 backdrop-blur-xl">
                       <div className="px-4 py-3 border-b border-white/10">
-                        <p className="text-sm font-medium text-white">{supervisor.name}</p>
-                        <p className="text-xs text-white/60">{supervisor.role}</p>
+                        <p className="text-sm font-medium text-white">{user?.first_name} {user?.last_name}</p>
+                        <p className="text-xs text-white/60 capitalize">{user?.role.replace('_', ' ')}</p>
                       </div>
                       <button 
                         onClick={() => {
@@ -410,12 +425,16 @@ function App() {
                       >
                         Edit Profile
                       </button>
-                      <a href="#" className="block px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-all">
-                        Settings
-                      </a>
-                      <a href="#" className="block px-4 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white transition-all">
+                      <button 
+                        onClick={() => {
+                          logout();
+                          setProfileMenuOpen(false);
+                        }}
+                        className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-400 hover:bg-white/10 hover:text-red-300 transition-all"
+                      >
+                        <LogOut className="h-4 w-4" />
                         Sign out
-                      </a>
+                      </button>
                     </div>
                   </>
                 )}
@@ -512,7 +531,7 @@ function App() {
                     <h3 className="text-base font-semibold leading-6 text-white">Quick Actions</h3>
                   </div>
                   <ul role="list" className="divide-y divide-white/10">
-                    {navigation.filter(n => n.value !== 'dashboard').map((item) => (
+                    {navigation.filter(n => n.value !== 'dashboard' && user && n.roles.includes(user.role)).map((item) => (
                       <li key={item.value}>
                         <button
                           onClick={() => setActiveTab(item.value)}
@@ -543,9 +562,18 @@ function App() {
             {activeTab === 'chapel' && <ChapelSchedule />}
             {activeTab === 'volunteers' && <VolunteerManagement />}
             {activeTab === 'guests' && <GuestManagement />}
+            {activeTab === 'tasks' && <TaskManagement />}
+            {activeTab === 'users' && hasPermission('can_manage_users') && <UserManagement />}
           </div>
         </main>
       </div>
+
+      {/* Chat Sidebar */}
+      {showChat && (
+        <div className="fixed right-0 top-0 bottom-0 w-96 z-50">
+          <Chat isOpen={showChat} onClose={() => setShowChat(false)} />
+        </div>
+      )}
 
       {/* Toast Notifications */}
       <div className="fixed bottom-4 left-4 z-50 space-y-3 pointer-events-none w-96">
@@ -719,6 +747,37 @@ function App() {
       )}
     </div>
   );
+}
+
+// Main App component that wraps AppContent with AuthProvider and handles login gate
+function App() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
+  );
+}
+
+// Authentication gate - shows login page if not authenticated
+function AuthGate() {
+  const { isAuthenticated, isLoading } = useAuth();
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-red-500 mx-auto mb-4"></div>
+          <p className="text-white/60">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+  
+  return <AppContent />;
 }
 
 export default App;

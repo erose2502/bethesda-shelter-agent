@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_settings
 from src.api.routes import voice, reservations, beds, health, livekit, chapel, volunteers, guests
+from src.api.routes import auth, chat, tasks
 from src.db.database import init_db
 from src.jobs.scheduler import start_scheduler, stop_scheduler
 
@@ -69,6 +70,9 @@ def create_app() -> FastAPI:
 
     # Include routers
     app.include_router(health.router, tags=["Health"])
+    app.include_router(auth.router, tags=["Authentication"])
+    app.include_router(chat.router, tags=["Chat"])
+    app.include_router(tasks.router, tags=["Tasks"])
     app.include_router(voice.router, prefix="/api/voice", tags=["Voice"])
     app.include_router(reservations.router, prefix="/api/reservations", tags=["Reservations"])
     app.include_router(beds.router, prefix="/api/beds", tags=["Beds"])

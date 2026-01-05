@@ -1,5 +1,5 @@
 """API routes package."""
 
-from . import voice, reservations, beds, health, livekit, chapel, volunteers, guests
+from . import voice, reservations, beds, health, livekit, chapel, volunteers, guests, auth, chat, tasks
 
-__all__ = ["voice", "reservations", "beds", "health", "livekit", "chapel", "volunteers", "guests"]
+__all__ = ["voice", "reservations", "beds", "health", "livekit", "chapel", "volunteers", "guests", "auth", "chat", "tasks"]

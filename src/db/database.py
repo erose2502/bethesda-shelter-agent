@@ -83,6 +83,7 @@ async def init_db() -> None:
     
     # Import models to ensure they're registered with Base
     from src.models import db_models  # noqa: F401
+    from src.models import auth_models  # noqa: F401
     
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -92,6 +93,9 @@ async def init_db() -> None:
     
     # Initialize 108 beds if they don't exist
     await init_beds()
+    
+    # Initialize default users
+    await init_default_users()
 
 
 async def run_migrations() -> None:
@@ -170,3 +174,25 @@ async def init_beds() -> None:
         settings = get_settings()
         if settings.debug:
             print(f"✅ Initialized {len(beds)} beds")
+
+
+async def init_default_users() -> None:
+    """
+    Initialize default admin users if they don't exist.
+    
+    Creates:
+    - Director account (admin)
+    - Life Coach account
+    - Supervisor account
+    """
+    from src.services.auth_service import AuthService
+    
+    factory = get_session_factory()
+    async with factory() as session:
+        auth_service = AuthService(session)
+        await auth_service.create_default_users()
+        await session.commit()
+        
+        settings = get_settings()
+        if settings.debug:
+            print("✅ Default users initialized")
